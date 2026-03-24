@@ -1,0 +1,1 @@
+C1: C C2: C C3: C C4: B C5: D C6: B C7: A C8: B C9: E C10: C E1: A E2: C E3: C E4: A E5: B E6: A E7: A E8: B E9: A E10: B M1: C M2: B M3: B M4: C M5: B M6: B M7: C M8: C M9: B M10: A A1: B A2: C A3: D A4: C A5: B A6: C A7: C A8: D A9: B A10: C N1: E N2: E N3: E N4: E N5: E N6: E N7: E N8: E N9: E N10: E X1: B X2: B X3: B X4: B X5: B X6: B X7: B X8: B X9: B X10: B
