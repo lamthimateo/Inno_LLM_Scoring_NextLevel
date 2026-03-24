@@ -1,0 +1,72 @@
+[
+  {
+    "model_id": "gemini3",
+    "total": 38,
+    "chemistry": -1,
+    "emotions": -1,
+    "math": 10,
+    "reasoning3d": 10,
+    "no_knowledge": 10,
+    "contradiction": 10,
+    "correct": 58,
+    "wrong": 2,
+    "blank": 0,
+    "format_violations": 0
+  },
+  {
+    "model_id": "gpt5",
+    "total": 38,
+    "chemistry": 10,
+    "emotions": -12,
+    "math": 10,
+    "reasoning3d": 10,
+    "no_knowledge": 10,
+    "contradiction": 10,
+    "correct": 58,
+    "wrong": 2,
+    "blank": 0,
+    "format_violations": 0
+  },
+  {
+    "model_id": "deepseek",
+    "total": 5,
+    "chemistry": -12,
+    "emotions": -23,
+    "math": 10,
+    "reasoning3d": 10,
+    "no_knowledge": 10,
+    "contradiction": 10,
+    "correct": 55,
+    "wrong": 5,
+    "blank": 0,
+    "format_violations": 0
+  },
+  {
+    "model_id": "grok",
+    "total": 5,
+    "chemistry": -12,
+    "emotions": -12,
+    "math": 10,
+    "reasoning3d": -1,
+    "no_knowledge": 10,
+    "contradiction": 10,
+    "correct": 55,
+    "wrong": 5,
+    "blank": 0,
+    "format_violations": 0
+  },
+  {
+    "model_id": "sonnet4",
+    "total": 5,
+    "chemistry": -1,
+    "emotions": -34,
+    "math": 10,
+    "reasoning3d": 10,
+    "no_knowledge": 10,
+    "contradiction": 10,
+    "correct": 55,
+    "wrong": 5,
+    "blank": 0,
+    "format_violations": 0
+  }
+]
