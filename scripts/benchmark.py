@@ -15,6 +15,7 @@ if BASE_DIR not in sys.path:
 
 from src.storage.db import init_db, connect, utc_now_iso
 from src.runner.file_runner import load_model_outputs
+from src.runner.api_runner import run_openai_models
 from src.evaluator.parser_mcq import parse_model_output
 from src.evaluator.scoring import score_answers
 from src.web.leaderboard import write_leaderboard_assets
@@ -181,49 +182,83 @@ def lock_set(args):
 def build_prompt(args):
     conn = connect(args.db)
     try:
-        row = conn.execute("SELECT status FROM question_sets WHERE set_id=?", (args.set_id,)).fetchone()
-        if not row:
-            raise SystemExit(f"Unknown set_id: {args.set_id}")
-        if row["status"] not in ("approved", "locked"):
-            raise SystemExit("Set must be approved/locked to build prompt.")
-
-        questions = conn.execute(
-            "SELECT qid, category, prompt, choices_json FROM questions WHERE set_id=? ORDER BY qid",
-            (args.set_id,)
-        ).fetchall()
-
-        # Strict instruction + template
-        header = (
-            "You will answer a multiple-choice benchmark.\n\n"
-            "RULES (STRICT):\n"
-            "1) Output ONLY answers in the format: QID: LETTER\n"
-            "2) One answer per line.\n"
-            "3) Allowed letters: A, B, C, D, E only.\n"
-            "4) No explanations, no extra text, no markdown.\n"
-            "5) If you are unsure, leave it blank after the colon (example: C7: ).\n"
-            "6) Answer every question ID shown.\n\n"
-            "ANSWER TEMPLATE (fill letters):\n"
-        )
-
-        template = []
-        for q in questions:
-            template.append(f"{q['qid']}: ")
-        template_txt = "\n".join(template)
-
-        body = ["\n\nQUESTIONS:\n"]
-        for q in questions:
-            choices = json.loads(q["choices_json"])
-            body.append(f"{q['qid']}. {q['prompt']}")
-            for c in choices:
-                body.append(f"{c['label']}. {c['text']}")
-            body.append("")
-
-        out = header + template_txt + "\n" + "\n".join(body)
+        out = _build_prompt_text(conn, args.set_id)
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(out, encoding="utf-8")
         print(f"Wrote prompt to {args.out}")
     finally:
         conn.close()
+
+
+def _build_prompt_text(conn, set_id: str) -> str:
+    row = conn.execute("SELECT status FROM question_sets WHERE set_id=?", (set_id,)).fetchone()
+    if not row:
+        raise SystemExit(f"Unknown set_id: {set_id}")
+    if row["status"] not in ("approved", "locked"):
+        raise SystemExit("Set must be approved/locked to build prompt.")
+
+    questions = conn.execute(
+        "SELECT qid, category, prompt, choices_json FROM questions WHERE set_id=? ORDER BY qid",
+        (set_id,)
+    ).fetchall()
+
+    header = (
+        "You will answer a multiple-choice benchmark.\n\n"
+        "RULES (STRICT):\n"
+        "1) Output ONLY answers in the format: QID: LETTER\n"
+        "2) One answer per line.\n"
+        "3) Allowed letters: A, B, C, D, E only.\n"
+        "4) No explanations, no extra text, no markdown.\n"
+        "5) If you are unsure, leave it blank after the colon (example: C7: ).\n"
+        "6) Answer every question ID shown.\n\n"
+        "ANSWER TEMPLATE (fill letters):\n"
+    )
+
+    template_txt = "\n".join([f"{q['qid']}: " for q in questions])
+
+    body = ["\n\nQUESTIONS:\n"]
+    for q in questions:
+        choices = json.loads(q["choices_json"])
+        body.append(f"{q['qid']}. {q['prompt']}")
+        for c in choices:
+            body.append(f"{c['label']}. {c['text']}")
+        body.append("")
+
+    return header + template_txt + "\n" + "\n".join(body)
+
+
+def _store_model_answers_and_aggregates(conn, *, model_run_id: int, answer_key: dict, raw_text: str):
+    parsed, format_violations = parse_model_output(raw_text)
+    per_q, per_cat = score_answers(answer_key, parsed)
+
+    correct = wrong = blank = 0
+    for qid, s in per_q.items():
+        given = parsed.get(qid)
+        if given is None:
+            blank += 1
+        elif s == 1:
+            correct += 1
+        else:
+            wrong += 1
+
+        conn.execute(
+            "INSERT OR REPLACE INTO answers(model_run_id,qid,given_answer,correct_answer,score) VALUES(?,?,?,?,?)",
+            (model_run_id, qid, given, answer_key.get(qid), s)
+        )
+
+    total = sum(per_q.values())
+    conn.execute(
+        """INSERT OR REPLACE INTO aggregates(
+               model_run_id,total_score,chemistry,emotions,math,reasoning3d,no_knowledge,contradiction,
+               correct_count,wrong_count,blank_count,format_violations
+           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            model_run_id, total,
+            per_cat["chemistry"], per_cat["emotions"], per_cat["math"],
+            per_cat["reasoning3d"], per_cat["no_knowledge"], per_cat["contradiction"],
+            correct, wrong, blank, format_violations
+        )
+    )
 
 
 def run_file(args):
@@ -255,7 +290,7 @@ def run_file(args):
 
         for model_id, raw_text in models.items():
             # store raw model run
-            cur = conn.execute(
+            conn.execute(
                 "INSERT OR REPLACE INTO model_runs(run_id,model_id,source,raw_text,created_at) VALUES(?,?,?,?,?)",
                 (args.run_id, model_id, "file", raw_text, now)
             )
@@ -263,41 +298,61 @@ def run_file(args):
                 "SELECT model_run_id FROM model_runs WHERE run_id=? AND model_id=?",
                 (args.run_id, model_id)
             ).fetchone()["model_run_id"]
-
-            parsed, format_violations = parse_model_output(raw_text)
-            per_q, per_cat = score_answers(answer_key, parsed)
-
-            correct = wrong = blank = 0
-            for qid, s in per_q.items():
-                given = parsed.get(qid)
-                if given is None:
-                    blank += 1
-                elif s == 1:
-                    correct += 1
-                else:
-                    wrong += 1
-
-                conn.execute(
-                    "INSERT OR REPLACE INTO answers(model_run_id,qid,given_answer,correct_answer,score) VALUES(?,?,?,?,?)",
-                    (model_run_id, qid, given, answer_key.get(qid), s)
-                )
-
-            total = sum(per_q.values())
-            conn.execute(
-                """INSERT OR REPLACE INTO aggregates(
-                       model_run_id,total_score,chemistry,emotions,math,reasoning3d,no_knowledge,contradiction,
-                       correct_count,wrong_count,blank_count,format_violations
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    model_run_id, total,
-                    per_cat["chemistry"], per_cat["emotions"], per_cat["math"],
-                    per_cat["reasoning3d"], per_cat["no_knowledge"], per_cat["contradiction"],
-                    correct, wrong, blank, format_violations
-                )
-            )
+            _store_model_answers_and_aggregates(conn, model_run_id=model_run_id, answer_key=answer_key, raw_text=raw_text)
 
         conn.commit()
         print(f"Stored run '{args.run_id}' with {len(models)} models.")
+    finally:
+        conn.close()
+
+
+def run_openai(args):
+    conn = connect(args.db)
+    now = utc_now_iso()
+    try:
+        row = conn.execute("SELECT status FROM question_sets WHERE set_id=?", (args.set_id,)).fetchone()
+        if not row:
+            raise SystemExit(f"Unknown set_id: {args.set_id}")
+        if row["status"] not in ("approved", "locked"):
+            raise SystemExit("Set must be approved/locked to run.")
+
+        prompt = _build_prompt_text(conn, args.set_id)
+
+        conn.execute(
+            "INSERT OR REPLACE INTO runs(run_id,set_id,created_at,prompt_policy,notes) VALUES(?,?,?,?,?)",
+            (args.run_id, args.set_id, now, args.prompt_policy, args.notes or "")
+        )
+
+        answer_key = {
+            r["qid"]: r["correct_answer"]
+            for r in conn.execute("SELECT qid, correct_answer FROM questions WHERE set_id=?", (args.set_id,))
+        }
+
+        models = [m.strip() for m in args.models.split(",") if m.strip()]
+        if not models:
+            raise SystemExit("--models must be a comma-separated list, e.g. gpt-4.1,gpt-4.1-mini")
+
+        results = run_openai_models(
+            prompt,
+            models,
+            temperature=args.temperature,
+            max_output_tokens=args.max_output_tokens,
+            timeout_s=args.timeout_s,
+        )
+
+        for r in results:
+            conn.execute(
+                "INSERT OR REPLACE INTO model_runs(run_id,model_id,source,raw_text,created_at) VALUES(?,?,?,?,?)",
+                (args.run_id, r.model_id, "api", r.raw_text, now)
+            )
+            model_run_id = conn.execute(
+                "SELECT model_run_id FROM model_runs WHERE run_id=? AND model_id=?",
+                (args.run_id, r.model_id)
+            ).fetchone()["model_run_id"]
+            _store_model_answers_and_aggregates(conn, model_run_id=model_run_id, answer_key=answer_key, raw_text=r.raw_text)
+
+        conn.commit()
+        print(f"Stored OpenAI API run '{args.run_id}' with {len(results)} models.")
     finally:
         conn.close()
 
@@ -397,6 +452,18 @@ def main():
     s.add_argument("--prompt-policy", default="strict_format_v1")
     s.add_argument("--notes", default="")
     s.set_defaults(func=run_file)
+
+    s = sub.add_parser("run-openai")
+    s.add_argument("--db", default=DB_PATH_DEFAULT)
+    s.add_argument("--set-id", required=True)
+    s.add_argument("--run-id", required=True)
+    s.add_argument("--models", required=True, help="Comma-separated OpenAI model list (e.g. gpt-4.1,gpt-4.1-mini)")
+    s.add_argument("--temperature", type=float, default=0.0)
+    s.add_argument("--max-output-tokens", type=int, default=2048)
+    s.add_argument("--timeout-s", type=float, default=120.0)
+    s.add_argument("--prompt-policy", default="strict_format_v1")
+    s.add_argument("--notes", default="")
+    s.set_defaults(func=run_openai)
 
     s = sub.add_parser("export")
     s.add_argument("--db", default=DB_PATH_DEFAULT)

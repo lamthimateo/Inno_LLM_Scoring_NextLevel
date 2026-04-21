@@ -22,6 +22,7 @@ Requires **Python 3.10+**.
 From the project root:
 
 ```bash
+python3 -m pip install -r requirements.txt
 python3 scripts/benchmark.py init-db
 ```
 
@@ -91,6 +92,29 @@ python3 scripts/benchmark.py serve --dir results/leaderboard --port 8080
 ## 6) Add API adapters later
 
 See `src/adapters/` for the adapter interface and stubs (OpenAI/Anthropic/Gemini). They are wired so you can add real API calls later without changing scoring.
+
+## 7) Run via OpenAI API (one-provider stable integration)
+
+Set your API key:
+
+```bash
+export OPENAI_API_KEY="..."
+```
+
+Run one or more OpenAI models directly (no copy/paste step):
+
+```bash
+python3 scripts/benchmark.py run-openai \
+  --set-id benchmark_v1 \
+  --run-id run_openai_001 \
+  --models gpt-4.1,gpt-4.1-mini
+```
+
+Then export as usual:
+
+```bash
+python3 scripts/benchmark.py export --run-id run_openai_001 --out results
+```
 
 ---
 
