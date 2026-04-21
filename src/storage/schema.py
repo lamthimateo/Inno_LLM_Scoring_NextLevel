@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS model_runs (
   model_id TEXT NOT NULL,
   source TEXT NOT NULL, -- 'file' or 'api'
   raw_text TEXT NOT NULL,
+  meta_json TEXT, -- provider metadata (usage/latency/errors), JSON-encoded
   created_at TEXT NOT NULL,
   UNIQUE(run_id, model_id),
   FOREIGN KEY (run_id) REFERENCES runs(run_id) ON DELETE CASCADE
