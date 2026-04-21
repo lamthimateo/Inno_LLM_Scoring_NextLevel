@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+
+# Local DB / outputs
+db/*.db
+results/
+
+# Env / secrets
+.env
+
+# IDE
+.idea/
