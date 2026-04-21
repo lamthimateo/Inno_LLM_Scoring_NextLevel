@@ -291,8 +291,8 @@ def run_file(args):
         for model_id, raw_text in models.items():
             # store raw model run
             conn.execute(
-                "INSERT OR REPLACE INTO model_runs(run_id,model_id,source,raw_text,created_at) VALUES(?,?,?,?,?)",
-                (args.run_id, model_id, "file", raw_text, now)
+                "INSERT OR REPLACE INTO model_runs(run_id,model_id,source,raw_text,meta_json,created_at) VALUES(?,?,?,?,?,?)",
+                (args.run_id, model_id, "file", raw_text, None, now)
             )
             model_run_id = conn.execute(
                 "SELECT model_run_id FROM model_runs WHERE run_id=? AND model_id=?",
@@ -335,6 +335,7 @@ def run_openai(args):
         # Call models one-by-one so a single failure doesn't kill the whole run.
         stored = 0
         for m in models:
+            meta_json = None
             try:
                 results = run_openai_models(
                     prompt,
@@ -347,13 +348,18 @@ def run_openai(args):
                 r = results[0]
                 raw_text = r.raw_text
                 model_id = r.model_id
+                meta_json = json.dumps(r.meta, ensure_ascii=False)
             except Exception as e:
                 model_id = f"openai:{m}"
                 raw_text = f"API_ERROR: {e.__class__.__name__}: {str(e)}"
+                meta_json = json.dumps(
+                    {"provider": "openai", "model": m, "error": {"type": e.__class__.__name__, "message": str(e)}},
+                    ensure_ascii=False,
+                )
 
             conn.execute(
-                "INSERT OR REPLACE INTO model_runs(run_id,model_id,source,raw_text,created_at) VALUES(?,?,?,?,?)",
-                (args.run_id, model_id, "api", raw_text, now)
+                "INSERT OR REPLACE INTO model_runs(run_id,model_id,source,raw_text,meta_json,created_at) VALUES(?,?,?,?,?,?)",
+                (args.run_id, model_id, "api", raw_text, meta_json, now)
             )
             model_run_id = conn.execute(
                 "SELECT model_run_id FROM model_runs WHERE run_id=? AND model_id=?",
