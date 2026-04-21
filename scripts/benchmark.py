@@ -332,27 +332,38 @@ def run_openai(args):
         if not models:
             raise SystemExit("--models must be a comma-separated list, e.g. gpt-4.1,gpt-4.1-mini")
 
-        results = run_openai_models(
-            prompt,
-            models,
-            temperature=args.temperature,
-            max_output_tokens=args.max_output_tokens,
-            timeout_s=args.timeout_s,
-        )
+        # Call models one-by-one so a single failure doesn't kill the whole run.
+        stored = 0
+        for m in models:
+            try:
+                results = run_openai_models(
+                    prompt,
+                    [m],
+                    temperature=args.temperature,
+                    max_output_tokens=args.max_output_tokens,
+                    timeout_s=args.timeout_s,
+                    max_retries=args.max_retries,
+                )
+                r = results[0]
+                raw_text = r.raw_text
+                model_id = r.model_id
+            except Exception as e:
+                model_id = f"openai:{m}"
+                raw_text = f"API_ERROR: {e.__class__.__name__}: {str(e)}"
 
-        for r in results:
             conn.execute(
                 "INSERT OR REPLACE INTO model_runs(run_id,model_id,source,raw_text,created_at) VALUES(?,?,?,?,?)",
-                (args.run_id, r.model_id, "api", r.raw_text, now)
+                (args.run_id, model_id, "api", raw_text, now)
             )
             model_run_id = conn.execute(
                 "SELECT model_run_id FROM model_runs WHERE run_id=? AND model_id=?",
-                (args.run_id, r.model_id)
+                (args.run_id, model_id)
             ).fetchone()["model_run_id"]
-            _store_model_answers_and_aggregates(conn, model_run_id=model_run_id, answer_key=answer_key, raw_text=r.raw_text)
+            _store_model_answers_and_aggregates(conn, model_run_id=model_run_id, answer_key=answer_key, raw_text=raw_text)
+            stored += 1
 
         conn.commit()
-        print(f"Stored OpenAI API run '{args.run_id}' with {len(results)} models.")
+        print(f"Stored OpenAI API run '{args.run_id}' with {stored} model(s).")
     finally:
         conn.close()
 
@@ -461,6 +472,7 @@ def main():
     s.add_argument("--temperature", type=float, default=0.0)
     s.add_argument("--max-output-tokens", type=int, default=2048)
     s.add_argument("--timeout-s", type=float, default=120.0)
+    s.add_argument("--max-retries", type=int, default=3)
     s.add_argument("--prompt-policy", default="strict_format_v1")
     s.add_argument("--notes", default="")
     s.set_defaults(func=run_openai)
