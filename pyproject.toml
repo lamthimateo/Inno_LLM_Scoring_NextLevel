@@ -1,0 +1,15 @@
+[project]
+name = "inno-llm-scoring-nextlevel"
+version = "0.1.0"
+description = "Mini LM-Arena-style benchmark runner with review workflow, adapters, SQLite storage, and leaderboard."
+requires-python = ">=3.10"
+dependencies = [
+  "openai==2.30.0",
+]
+
+[project.scripts]
+benchmark = "src.benchmark.cli:main"
+
+[tool.unittest]
+# kept empty; tests are run via `python -m unittest`
+
