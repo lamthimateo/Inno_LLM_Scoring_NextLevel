@@ -181,6 +181,30 @@ def test_question_detail_404_for_missing(client_with_users):
     assert r.status_code == 404
 
 
+def test_detail_page_shows_submit_button_for_author_of_draft(client_with_users):
+    """Regression: the detail template was comparing current_user.username to
+    set.author (a User relationship object), so the Submit-for-review button
+    never rendered for the actual author of a draft set."""
+    _login(client_with_users, "alice")
+    _upload(client_with_users, set_id="vis_smoke")
+    r = client_with_users.get("/questions/vis_smoke")
+    assert r.status_code == 200
+    body = r.text
+    assert "Submit for review" in body, "author must see the submit-for-review button on a draft"
+    assert "/questions/vis_smoke/submit-review" in body
+
+
+def test_detail_page_hides_submit_button_for_non_author(client_with_users):
+    _login(client_with_users, "alice")
+    _upload(client_with_users, set_id="vis_smoke")
+    _logout(client_with_users)
+
+    _login(client_with_users, "bob")  # reviewer, not author
+    r = client_with_users.get("/questions/vis_smoke")
+    assert r.status_code == 200
+    assert "Submit for review" not in r.text
+
+
 # ---------------------------------------------------------------------------
 # POST /questions/preview — HTMX live preview fragment
 # ---------------------------------------------------------------------------

@@ -24,20 +24,23 @@
   </div>
 
   <div class="actions">
-    {# Status-aware primary action ladder #}
-    {% if set.status == 'draft' and (current_user.username == set.author or current_user.role == 'admin') %}
+    {# Status-aware primary action ladder.
+       Uses can_* booleans precomputed in src/web/routes/questions.py
+       (these own the author/reviewer/admin matrix — keep them as the
+       single source of truth so template + route can't drift). #}
+    {% if can_submit %}
       <form method="post" action="{{ url_for('questions.submit_review', set_id=set.set_id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
         <button class="btn btn-primary" type="submit">Submit for review</button>
       </form>
-    {% elif set.status == 'in_review' and current_user.role in ['reviewer','admin'] and current_user.username != set.author %}
+    {% elif can_approve %}
       <form method="post" action="{{ url_for('questions.approve', set_id=set.set_id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
         <button class="btn btn-primary"
                 data-confirm="Approve this set? The author cannot approve their own set."
                 type="submit">Approve</button>
       </form>
-    {% elif set.status == 'approved' and current_user.role in ['reviewer','admin'] %}
+    {% elif can_lock %}
       <form method="post" action="{{ url_for('questions.lock', set_id=set.set_id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
         <button class="btn btn-primary"
@@ -48,7 +51,7 @@
       <a class="btn btn-primary" href="{{ url_for('runs.new', set_id=set.set_id) }}">Start a run →</a>
     {% endif %}
 
-    {% if set.status == 'draft' and (current_user.username == set.author or current_user.role == 'admin') %}
+    {% if can_edit %}
       <a class="btn" href="{{ url_for('questions.edit', set_id=set.set_id) }}">Edit questions</a>
     {% endif %}
   </div>
@@ -111,7 +114,7 @@
                     {% endfor %}
                   </div>
                   <div class="row-tight mt-3">
-                    {% if set.status == 'draft' and (current_user.username == set.author or current_user.role == 'admin') %}
+                    {% if can_edit %}
                       <a class="btn btn-sm" href="{{ url_for('questions.edit_one', set_id=set.set_id, qid=q.qid) }}">Edit</a>
                     {% endif %}
                     {% if q.versions and q.versions|length > 1 %}
