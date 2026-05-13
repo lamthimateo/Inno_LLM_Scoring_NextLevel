@@ -19,6 +19,7 @@ EXPECTED_TABLES = {
     "answers",
     "aggregates",
     "jobs",
+    "password_reset_tokens",
 }
 
 

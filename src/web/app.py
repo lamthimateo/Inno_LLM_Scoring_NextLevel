@@ -1,34 +1,67 @@
-"""FastAPI application — v0.2.0 placeholder.
+"""FastAPI application entrypoint.
 
-Day 1 only contains a single liveness endpoint so ``uvicorn`` can boot the
-container. Days 2-5 progressively replace this with auth, Questions tab,
-Runs tab, and Results tab.
+Day 2 wires:
+
+- ``SessionMiddleware`` (signed cookies; secret from ``SESSION_SECRET``)
+- Static asset mount at ``/static``
+- Auth router (login / logout / signup / forgot / reset / change-password)
+- Home dashboard at ``/`` (requires login; redirects to /auth/login otherwise)
+
+Days 3-5 progressively add the Questions tab, Runs tab, and Results tab.
 """
 
 from __future__ import annotations
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+import os
+from typing import Optional
+
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+
+from src.auth.dependencies import get_current_user
+from src.auth.router import router as auth_router
+from src.storage.models import User
+from src.web.templating import APP_VERSION, render
 
 
-app = FastAPI(title="Inno LLM Scoring", version="0.2.0-dev")
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "dev-secret-change-me")
+SESSION_COOKIE_NAME = "inno_session"
+SESSION_MAX_AGE = 60 * 60 * 24 * 7  # one week
+
+
+app = FastAPI(title="Inno LLM Scoring", version=APP_VERSION)
+
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    session_cookie=SESSION_COOKIE_NAME,
+    max_age=SESSION_MAX_AGE,
+    same_site="lax",
+    https_only=False,  # set True behind a TLS proxy in production
+)
+
+
+# Static assets live next to the project so the same files are reachable in
+# both dev (uvicorn with --reload) and the Docker image.
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+app.include_router(auth_router)
 
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 @app.get("/", response_class=HTMLResponse)
-def home() -> str:
-    return (
-        "<!doctype html><html><head><meta charset=\"utf-8\"/>"
-        "<title>Inno LLM Scoring</title>"
-        "<style>body{font-family:system-ui;margin:40px;max-width:640px;color:#0f172a}"
-        "code{background:#f1f5f9;padding:2px 6px;border-radius:6px}</style></head>"
-        "<body><h1>Inno LLM Scoring — Day 1</h1>"
-        "<p>Docker + Postgres + SQLAlchemy + Alembic are up. "
-        "Auth and the Questions / Results tabs land in Days 2-5.</p>"
-        "<p>Health check: <code>GET /healthz</code></p>"
-        "</body></html>"
-    )
+def home(
+    request: Request,
+    user: Optional[User] = Depends(get_current_user),
+):
+    if user is None:
+        return RedirectResponse(url="/auth/login", status_code=303)
+    return render(request, "home.html", current_user=user)
