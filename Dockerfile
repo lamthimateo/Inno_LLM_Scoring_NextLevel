@@ -17,6 +17,7 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install -r requirements.txt
 
 COPY src /app/src
+COPY static /app/static
 COPY imports /app/imports
 COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic
