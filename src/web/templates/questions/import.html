@@ -76,7 +76,9 @@
         <input type="file" name="files" multiple accept=".txt"
                hx-post="{{ url_for('questions.preview') }}"
                hx-target="#preview-pane"
+               hx-swap="innerHTML"
                hx-encoding="multipart/form-data"
+               hx-indicator="#preview-pane .htmx-indicator"
                hx-trigger="change">
         <div class="chips mt-3" data-dropzone-files></div>
       </label>

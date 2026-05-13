@@ -30,7 +30,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from src.auth.dependencies import require_login
-from src.benchmark.importing import ImportError as ImportFailure, import_questions
+from src.benchmark.importing import (
+    ImportError as ImportFailure,
+    import_questions,
+    parse_questions_from_text,
+)
 from src.benchmark.queries import (
     count_by_status,
     get_question,
@@ -38,6 +42,7 @@ from src.benchmark.queries import (
     list_question_versions,
     list_sets,
 )
+from src.benchmark.validation import validate_questions
 from src.benchmark.workflow import (
     WorkflowError,
     approve,
@@ -48,7 +53,7 @@ from src.benchmark.workflow import (
 )
 from src.storage.db import get_session
 from src.storage.models import QuestionSet, SetStatus, User, UserRole
-from src.web.templating import render
+from src.web.templating import render, templates
 
 
 router = APIRouter(prefix="/questions", tags=["questions"])
@@ -220,6 +225,73 @@ async def import_submit(
         form=form,
         status_code=400,
     )
+
+
+# ---------------------------------------------------------------------------
+# Live preview (HTMX)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/preview", response_class=HTMLResponse)
+async def preview(
+    request: Request,
+    files: list[UploadFile] = File(default_factory=list),
+    user: User = Depends(require_login),
+):
+    """Parse uploaded .txt files in-memory and return an HTML preview fragment.
+
+    The Questions → Import dropzone HTMX-posts file selections here on
+    ``change``. Nothing is persisted — this is a pure preview that mirrors
+    the static checks run by ``scripts/benchmark_review.py`` so the user
+    sees parse counts and validation findings before saving.
+    """
+
+    parsed_total: list = []
+    file_errors: list[str] = []
+
+    accepted_files = [
+        f for f in files if (f.filename or "").strip()
+    ]
+
+    for f in accepted_files:
+        raw = await f.read()
+        if not raw:
+            file_errors.append(f"{f.filename or '(unnamed)'}: empty file")
+            continue
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            file_errors.append(
+                f"{f.filename or '(unnamed)'}: not valid UTF-8 — re-save the file as UTF-8"
+            )
+            continue
+        try:
+            parsed_total.extend(
+                parse_questions_from_text(text, source_name=f.filename or "<upload>")
+            )
+        except ImportFailure as exc:
+            file_errors.append(f"{f.filename or '(unnamed)'}: {exc}")
+
+    report = validate_questions(parsed_total)
+
+    response = templates.TemplateResponse(
+        request,
+        "questions/_preview_fragment.html",
+        {
+            "current_user": user,
+            "questions": parsed_total,
+            "summary": {
+                "total": report.total,
+                "by_category": report.by_category,
+                "file_count": len(accepted_files),
+            },
+            "validation": report,
+            "file_errors": file_errors,
+            "no_files": len(accepted_files) == 0,
+        },
+    )
+    response.headers["HX-Trigger"] = "set:revalidated"
+    return response
 
 
 # ---------------------------------------------------------------------------
