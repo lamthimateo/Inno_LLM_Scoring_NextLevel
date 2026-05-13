@@ -6,10 +6,80 @@
 
   Inputs:
     - locked_sets: iterable of QuestionSetRow-like objects (.set_id, .title, .question_count)
-    - form: {"set_id": str, "model_ids_csv": str, "notes": str}
+    - form: {"set_id": str, "selected_models": list[str], "notes": str}
     - error: optional string
-    - default_models: list of "provider:model" strings (CLI preset)
+    - model_catalog_grouped: list[(group_label, [CatalogEntry,...]), ...]
+    - model_catalog_defaults: list[str] of default-selected model ids
+    - model_catalog_group_available: dict[group_label -> bool]
 #}
+
+{% macro _model_picker(field_id_prefix, selected_models, defaults, grouped, group_available) %}
+  {#
+    Renders the model picker as a native <select multiple> with <optgroup>
+    sections. Native is intentional: it's accessible, mobile-friendly, and
+    needs no JS for the form submission. The companion JS adds a "N models
+    selected" chip and a Reset button — both are progressive enhancements.
+  #}
+  {% set picker_id = field_id_prefix ~ '__models' %}
+  {% set chip_id   = field_id_prefix ~ '__count' %}
+  <div class="form-field" data-model-picker>
+    <label for="{{ picker_id }}">
+      Models
+      <span class="muted fw-500">— pick from the curated catalog</span>
+    </label>
+
+    <select class="select model-picker"
+            id="{{ picker_id }}"
+            name="models"
+            multiple
+            size="8"
+            data-model-picker-select
+            data-model-picker-defaults='{{ defaults | tojson }}'
+            data-model-picker-count-target="#{{ chip_id }}"
+            required>
+      {% for group_label, entries in grouped %}
+        {% set available = group_available.get(group_label, True) %}
+        <optgroup label="{{ group_label }}"
+                  {% if not available %}disabled{% endif %}>
+          {% for entry in entries %}
+            <option value="{{ entry.id }}"
+                    title="{{ entry.id }}"
+                    data-provider="{{ entry.provider }}"
+                    data-requires-env="{{ entry.requires_env }}"
+                    {% if entry.id in (selected_models or []) %}selected{% endif %}
+                    {% if not available %}disabled{% endif %}>
+              {{ entry.label }} — {{ entry.id }}
+            </option>
+          {% endfor %}
+        </optgroup>
+      {% endfor %}
+    </select>
+
+    <div class="row-tight" style="justify-content: space-between; gap: 10px; align-items: center; margin-top: 6px;">
+      <div class="help">
+        Hold <kbd>Cmd</kbd>/<kbd>Ctrl</kbd> to pick multiple. Default =
+        4-model preset.
+        {% if not group_available.get('OpenRouter cross-provider', True) %}
+          <br>
+          <span class="muted">
+            OpenRouter models require <code>OPENROUTER_API_KEY</code> in <code>.env</code>.
+          </span>
+        {% endif %}
+      </div>
+
+      <div class="row-tight" style="gap: 8px; flex-wrap: nowrap;">
+        <span class="chip" id="{{ chip_id }}" data-model-picker-count>
+          <b data-model-picker-count-value>{{ (selected_models or defaults)|length }}</b>
+          <span>models selected</span>
+        </span>
+        <button type="button" class="btn btn-sm btn-ghost" data-model-picker-reset>
+          Reset to default
+        </button>
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+
 {% if standalone_page or (locked_sets is defined and runs is not defined) %}
   {% extends "base.html" %}
   {% set active_tab = 'results' %}
@@ -21,7 +91,7 @@
           <a href="{{ url_for('runs.list') }}" class="muted text-sm">← All runs</a>
         </div>
         <h1>Start a new benchmark run</h1>
-        <div class="sub">Pick a locked set and confirm the model preset.</div>
+        <div class="sub">Pick a locked set and choose the models you want to benchmark.</div>
       </div>
     </div>
 
@@ -61,16 +131,13 @@
             <div class="help">Only sets in status <b>locked</b> can be run.</div>
           </div>
 
-          <div class="form-field">
-            <label for="model_ids_csv">Models <span class="muted fw-500">(one per line, format <code>provider:model</code>)</span></label>
-            <textarea class="textarea text-mono" id="model_ids_csv" name="model_ids_csv" rows="6" required>{{ form.model_ids_csv if form else '' }}</textarea>
-            <div class="help">
-              Default is 4 OpenAI variants (requires <code>OPENAI_API_KEY</code>).
-              For cross-provider comparison (Anthropic, Google, DeepSeek, …) set
-              <code>OPENROUTER_API_KEY</code> in <code>.env</code> and restart — the preset will
-              switch automatically.
-            </div>
-          </div>
+          {{ _model_picker(
+              'runs_new_page',
+              (form.selected_models if form and form.selected_models is defined else model_catalog_defaults),
+              model_catalog_defaults,
+              model_catalog_grouped,
+              model_catalog_group_available
+          ) }}
 
           <div class="form-field">
             <label for="notes">Notes <span class="muted fw-500">(optional)</span></label>
@@ -122,10 +189,13 @@
             </select>
           </div>
 
-          <div class="form-field">
-            <label for="model_ids_csv_modal">Models <span class="muted fw-500">(one per line, <code>provider:model</code>)</span></label>
-            <textarea class="textarea text-mono" id="model_ids_csv_modal" name="model_ids_csv" rows="5" required></textarea>
-          </div>
+          {{ _model_picker(
+              'runs_new_modal',
+              model_catalog_defaults,
+              model_catalog_defaults,
+              model_catalog_grouped,
+              model_catalog_group_available
+          ) }}
 
           <div class="form-field">
             <label for="notes_modal">Notes <span class="muted fw-500">(optional)</span></label>
