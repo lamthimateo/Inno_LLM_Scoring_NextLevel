@@ -13,6 +13,18 @@ more models. This module wires the pieces together:
 
 Errors from individual model calls are captured on the per-model
 ``Job`` / ``ModelRun`` row; one bad provider does not abort the rest.
+
+Cancellation
+------------
+
+The HTTP route ``POST /runs/{run_id}/cancel`` flips two switches:
+
+- It writes ``Job.status = 'cancelled'`` so the UI sees the new state
+  immediately on its next poll.
+- It calls :func:`request_cancellation`, which sets a process-local
+  :class:`threading.Event`. The orchestrator loop in :func:`execute_run`
+  checks this event between models and exits cleanly, leaving the
+  results of already-completed models in place.
 """
 
 from __future__ import annotations
@@ -47,6 +59,48 @@ log = logging.getLogger(__name__)
 
 class RunError(ValueError):
     pass
+
+
+# ---------------------------------------------------------------------------
+# Cancellation flags
+# ---------------------------------------------------------------------------
+#
+# Cancellation lives in-process: the orchestrator thread for ``run_id`` checks
+# this map between model calls and exits early when the corresponding event
+# is set. This is sufficient for the single-app-process deployment we ship
+# today; a multi-worker setup would need to back this with Redis instead.
+
+_cancellation_events: dict[str, threading.Event] = {}
+_cancellation_lock = threading.Lock()
+
+
+def request_cancellation(run_id: str) -> None:
+    """Ask the orchestrator thread for ``run_id`` to stop before the next model.
+
+    Idempotent — repeated calls leave the event set.
+    """
+
+    with _cancellation_lock:
+        event = _cancellation_events.get(run_id)
+        if event is None:
+            event = threading.Event()
+            _cancellation_events[run_id] = event
+        event.set()
+
+
+def is_cancellation_requested(run_id: str) -> bool:
+    """Return ``True`` iff :func:`request_cancellation` was called for ``run_id``."""
+
+    with _cancellation_lock:
+        event = _cancellation_events.get(run_id)
+    return bool(event and event.is_set())
+
+
+def clear_cancellation(run_id: str) -> None:
+    """Drop the cancellation entry for ``run_id`` (called when the run finishes)."""
+
+    with _cancellation_lock:
+        _cancellation_events.pop(run_id, None)
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +196,15 @@ def execute_run(session: Session, run_id: str) -> Job:
     session.commit()
 
     errors: list[dict[str, Any]] = []
+    completed = 0
+    cancelled = False
     for idx, model_id in enumerate(model_ids, start=1):
+        if is_cancellation_requested(run_id):
+            cancelled = True
+            log.info(
+                "run.cancellation_observed run_id=%s before_model=%s", run_id, model_id
+            )
+            break
         try:
             adapter = get_adapter(model_id)
             if not adapter.is_configured():
@@ -166,6 +228,7 @@ def execute_run(session: Session, run_id: str) -> Job:
                 raw_text=result.raw_text or "",
             )
             job.progress_done = idx
+            completed = idx
             session.flush()
             session.commit()
             log.info("run.model_done run_id=%s model=%s", run_id, model_id)
@@ -176,12 +239,26 @@ def execute_run(session: Session, run_id: str) -> Job:
             # Reload job after rollback
             job = session.get(Job, run_id)
             job.progress_done = idx
+            completed = idx
             session.flush()
             session.commit()
 
     job = session.get(Job, run_id)
     job.finished_at = datetime.now(timezone.utc)
-    if errors and len(errors) == len(model_ids):
+    if cancelled:
+        # The cancel route already wrote status=cancelled; if it didn't run
+        # first (race condition between observation and the HTTP write), do
+        # it ourselves. Either way, the cancellation reason wins over the
+        # success/error summary below.
+        job.status = JobStatus.CANCELLED.value
+        remaining = len(model_ids) - completed
+        job.message = (
+            f"Cancelled after {completed}/{len(model_ids)} models "
+            f"({remaining} not started)."
+        )
+        if errors:
+            job.error = "; ".join(f"{e['model_id']}: {e['error']}" for e in errors)
+    elif errors and len(errors) == len(model_ids):
         job.status = JobStatus.ERROR.value
         job.error = "; ".join(f"{e['model_id']}: {e['error']}" for e in errors)
     elif errors:
@@ -196,6 +273,7 @@ def execute_run(session: Session, run_id: str) -> Job:
         job.message = f"All {len(model_ids)} models succeeded."
     session.flush()
     session.commit()
+    clear_cancellation(run_id)
     return job
 
 

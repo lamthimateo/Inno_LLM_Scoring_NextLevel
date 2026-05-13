@@ -12,7 +12,14 @@ from sqlalchemy import select
 
 from src.adapters.base import ModelAdapter, ModelResult
 from src.benchmark.importing import import_questions
-from src.benchmark.runs import RunError, create_run, execute_run
+from src.benchmark.runs import (
+    RunError,
+    clear_cancellation,
+    create_run,
+    execute_run,
+    is_cancellation_requested,
+    request_cancellation,
+)
 from src.benchmark.workflow import approve, lock, submit_review
 from src.storage.models import (
     Aggregate,
@@ -190,3 +197,54 @@ def test_execute_run_total_failure(session, locked_set_with_3_questions, users):
         finished = execute_run(session, run.run_id)
 
     assert finished.status == JobStatus.ERROR.value
+
+
+def test_execute_run_exits_cleanly_on_cancellation(session, locked_set_with_3_questions, users):
+    """Cancellation observed mid-run -> job ends in CANCELLED, completed model is preserved, remaining models are not invoked."""
+
+    perfect = FakeAdapter("good", answers={"C1": "B", "C2": "B", "M1": "B"})
+    not_called = FakeAdapter("never", answers={})
+
+    call_log: list[str] = []
+
+    def fake_get_adapter(model_id: str):
+        call_log.append(model_id)
+        if model_id == "fake:good":
+            return perfect
+        # Request cancellation as soon as the first model finishes, BEFORE
+        # the second model is fetched. The orchestrator should observe the
+        # flag at the top of its next loop iteration and bail out.
+        return not_called
+
+    run, _ = create_run(
+        session,
+        set_id=locked_set_with_3_questions,
+        model_ids=["fake:good", "fake:never_runs", "fake:also_skipped"],
+        started_by_id=users["author"].id,
+    )
+    session.commit()
+
+    original_run_method = perfect.run
+
+    def run_then_cancel(prompt: str, **kwargs):
+        result = original_run_method(prompt, **kwargs)
+        request_cancellation(run.run_id)
+        return result
+
+    perfect.run = run_then_cancel  # type: ignore[assignment]
+
+    try:
+        with patch("src.benchmark.runs.get_adapter", side_effect=fake_get_adapter):
+            finished = execute_run(session, run.run_id)
+
+        assert finished.status == JobStatus.CANCELLED.value
+        assert finished.finished_at is not None
+        assert "Cancelled" in (finished.message or "")
+        # Only the first model was actually invoked.
+        assert call_log == ["fake:good"]
+        # And the cancellation flag is cleared at the end of execute_run so
+        # the next run reusing the same id (we don't, but the contract holds)
+        # would start fresh.
+        assert is_cancellation_requested(run.run_id) is False
+    finally:
+        clear_cancellation(run.run_id)
