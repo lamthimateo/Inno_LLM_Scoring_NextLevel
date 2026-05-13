@@ -1,0 +1,105 @@
+{# Live preview fragment rendered by POST /questions/preview.
+
+   Swapped into the body of `#preview-pane` via `hx-swap="innerHTML"`. We
+   reuse `.card-header`, `.chip`, `.alert*`, `.q-list`, `.empty` from the
+   existing design tokens — no new CSS introduced.
+#}
+<div class="card-header">
+  <h3>Parsed preview</h3>
+  {% if summary.total %}
+    <span class="muted text-sm">
+      {{ summary.total }} question{{ '' if summary.total == 1 else 's' }}
+      from {{ summary.file_count }} file{{ '' if summary.file_count == 1 else 's' }}
+    </span>
+  {% else %}
+    <span class="muted text-sm">No questions parsed yet</span>
+  {% endif %}
+</div>
+
+{# Per-file decode / parse errors. Shown first so they aren't missed. #}
+{% if file_errors %}
+  <div class="preview-errors mb-3">
+    {% for msg in file_errors %}
+      <div class="alert alert-error">
+        <div class="alert-body">
+          <div class="alert-title">Could not parse file</div>
+          <div>{{ msg }}</div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if no_files and not file_errors %}
+  <div class="empty preview-empty" style="padding: var(--space-7) var(--space-3);">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M7 3h7l5 5v13H7V3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M13 3v6h6" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+    </svg>
+    <div class="muted">No files selected. Drop one or more <span class="kbd">.txt</span> files to preview.</div>
+  </div>
+{% elif summary.total == 0 and not file_errors %}
+  <div class="empty preview-empty" style="padding: var(--space-7) var(--space-3);">
+    <div class="muted">
+      Files received but no questions parsed.
+      Make sure each question starts with a QID line like
+      <span class="kbd">C1.</span> followed by choices <span class="kbd">A.</span>–<span class="kbd">E.</span>
+      and a <span class="kbd">Correct answer: X</span> line.
+    </div>
+  </div>
+{% elif summary.total %}
+  {# Summary chips: total + per-category counts #}
+  <div class="row-tight mb-3 preview-summary">
+    <span class="chip"><b>Questions</b> {{ summary.total }}</span>
+    {% for cat, n in summary.by_category.items() %}
+      <span class="chip"><b>{{ cat }}</b> · {{ n }}</span>
+    {% endfor %}
+  </div>
+
+  {# Validation block: one alert per finding (errors first, then warnings) #}
+  <div class="preview-validation mb-3">
+    {% for f in validation.findings %}
+      {% set cls = 'alert-error' if f.level == 'fail' else ('alert-warn' if f.level == 'warn' else 'alert-success') %}
+      <div class="alert {{ cls }}">
+        <div class="alert-body">
+          <div class="alert-title">{{ f.title }}</div>
+          {% if f.detail %}<div>{{ f.detail }}</div>{% endif %}
+          {% if f.qids %}
+            <div class="muted text-sm preview-qids">{{ f.qids|join(', ') }}{% if f.qids|length < (validation.duplicates|length + validation.missing_choices|length + validation.empty_prompts|length + validation.missing_answers|length + validation.short_choices|length) %}…{% endif %}</div>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  {# Preview list: first 10 questions, the rest collapsed under "+N more". #}
+  <ul class="q-list">
+    {% for q in questions[:10] %}
+      <details class="q-item">
+        <summary>
+          <span class="qid">{{ q.qid }}</span>
+          <span class="cat cat-{{ q.qid[:1] }}">{{ q.qid[:1] }}</span>
+          <span class="q-prompt">{{ q.prompt or '(empty prompt)' }}</span>
+        </summary>
+        <div class="q-body">
+          <div class="q-choices">
+            {% for c in q.choices %}
+              <div class="q-choice {{ 'correct' if c.label == q.correct_answer else '' }}">
+                <span class="letter">{{ c.label }}</span>
+                <span>{{ c.text }}</span>
+              </div>
+            {% endfor %}
+          </div>
+          {% if not q.correct_answer %}
+            <div class="muted text-sm">No correct answer marked.</div>
+          {% endif %}
+        </div>
+      </details>
+    {% endfor %}
+  </ul>
+  {% if questions|length > 10 %}
+    <div class="muted text-sm mt-3 preview-more">
+      +{{ questions|length - 10 }} more question{{ '' if (questions|length - 10) == 1 else 's' }} not shown.
+    </div>
+  {% endif %}
+{% endif %}

@@ -179,3 +179,118 @@ def test_question_detail_404_for_missing(client_with_users):
     _login(client_with_users, "alice")
     r = client_with_users.get("/questions/nope/Q1")
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /questions/preview — HTMX live preview fragment
+# ---------------------------------------------------------------------------
+
+
+SAMPLE_WITH_WARNINGS = """C1. What is H2O?
+A. Salt
+B. Water
+C. Sugar
+D. Iron
+E. Oxygen
+Correct answer: B
+
+C1. Duplicate of C1 — should be flagged.
+A. Foo
+B. Bar
+C. Baz
+D. Qux
+E. Quux
+Correct answer: A
+
+C2. Missing answer line.
+A. Alpha
+B. Beta
+C. Gamma
+D. Delta
+E. Epsilon
+"""
+
+
+CLEAN_SAMPLE = """C1. Which liquid is essential for life?
+A. Sodium chloride solid
+B. Pure liquid water at room temperature
+C. Crystalline sucrose
+D. Metallic iron filings
+E. Molecular oxygen gas
+Correct answer: B
+
+C2. Which element has atomic number one?
+A. Helium (atomic number two)
+B. Hydrogen (atomic number one)
+C. Lithium (atomic number three)
+D. Carbon (atomic number six)
+E. Oxygen (atomic number eight)
+Correct answer: B
+"""
+
+
+def test_questions_preview_renders_fragment_with_valid_file(client_with_users):
+    _login(client_with_users, "alice")
+    r = client_with_users.post(
+        "/questions/preview",
+        files=[("files", ("c1.txt", io.BytesIO(CLEAN_SAMPLE.encode()), "text/plain"))],
+    )
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/html")
+    # Not a full page — the fragment must not pull in the base layout.
+    body = r.text
+    assert "<html" not in body.lower()
+    # Parsed-preview card-header marker + parse counts.
+    assert "Parsed preview" in body
+    assert "chemistry" in body
+    # Both QIDs from CLEAN_SAMPLE land in the preview list.
+    assert "C1" in body and "C2" in body
+    # Clean payload -> green pass finding.
+    assert "All checks passed" in body
+    assert "alert-success" in body
+    # HX-Trigger header tells listening widgets to re-render.
+    assert r.headers.get("hx-trigger") == "set:revalidated"
+
+
+def test_questions_preview_returns_validation_warnings(client_with_users):
+    _login(client_with_users, "alice")
+    r = client_with_users.post(
+        "/questions/preview",
+        files=[
+            (
+                "files",
+                ("bad.txt", io.BytesIO(SAMPLE_WITH_WARNINGS.encode()), "text/plain"),
+            )
+        ],
+    )
+    assert r.status_code == 200, r.text
+    body = r.text
+    assert "Duplicate QIDs" in body
+    assert "Missing correct answer" in body
+    # Error-level finding -> red alert class.
+    assert "alert-error" in body
+    assert "alert-warn" in body
+
+
+def test_questions_preview_handles_empty_payload(client_with_users):
+    _login(client_with_users, "alice")
+    r = client_with_users.post("/questions/preview", files=[])
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/html")
+    body = r.text
+    assert "No files selected" in body
+    # Still emits the revalidation trigger so the validation widget clears.
+    assert r.headers.get("hx-trigger") == "set:revalidated"
+
+
+def test_questions_preview_requires_login(client_with_users):
+    r = client_with_users.post(
+        "/questions/preview",
+        files=[("files", ("c1.txt", io.BytesIO(SAMPLE.encode()), "text/plain"))],
+        follow_redirects=False,
+    )
+    # require_login raises 303 to /auth/login (kept consistent with the rest
+    # of the questions routes — see test_questions_list_requires_login).
+    assert r.status_code in (302, 303, 401)
+    if r.status_code in (302, 303):
+        assert "/auth/login" in r.headers["location"]
