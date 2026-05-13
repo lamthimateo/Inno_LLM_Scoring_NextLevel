@@ -103,7 +103,11 @@
       const closer = e.target.closest("[data-modal-close], .modal-backdrop");
       if (closer) {
         const backdrop = closer.closest(".modal-backdrop");
-        if (backdrop && (closer === backdrop || closer.hasAttribute("data-modal-close"))) {
+        // Only close on a direct click on the backdrop itself, or on an explicit
+        // [data-modal-close] element. `closer === backdrop` would be true for any
+        // click inside the modal (e.g. opening a <select> dropdown), which would
+        // dismiss the modal as soon as the user interacted with a form field.
+        if (backdrop && (e.target === backdrop || closer.hasAttribute("data-modal-close"))) {
           closeModal(backdrop);
         }
       }
