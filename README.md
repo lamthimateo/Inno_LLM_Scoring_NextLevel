@@ -113,7 +113,6 @@ it creates three accounts so the two-person review can be demonstrated:
 │   │   ├── runs.py          create_run + execute_run + run_in_background
 │   │   └── exporting.py     export to CSV + static leaderboard assets
 │   ├── evaluator/           parsing + scoring
-│   ├── runner/              file vs. API entry points (kept for tests)
 │   ├── storage/
 │   │   ├── models.py        full SQLAlchemy schema
 │   │   └── db.py            engine + sessionmaker
@@ -126,7 +125,7 @@ it creates three accounts so the two-person review can be demonstrated:
 │       │   ├── questions.py /questions/* (list, import, detail, edit, workflow)
 │       │   └── runs.py      /runs/* (list, new, detail, status fragment)
 │       └── templates/       Jinja2 (extends _base.html)
-└── tests/                   pytest — 50 tests, sqlite in-memory
+└── tests/                   pytest — sqlite in-memory
 ```
 
 ### Database schema
@@ -180,18 +179,20 @@ DATABASE_URL="sqlite:///:memory:" SESSION_SECRET=test pytest -q
 
 What's covered:
 
-- **Parser + scoring** (3) — pure unit tests around the strict-format parser.
-- **OpenAI error paths** (2) — adapter retries + missing-key error.
+- **Parser + scoring** (4) — pure unit tests around the strict-format parser.
+- **OpenAI error paths** (3) — adapter retries, missing-key error, reasoning-model temperature handling.
 - **DB schema** (2) — every table from `create_all`, `meta_json` present.
 - **Pipeline / workflow** (5) — import → submit → approve → lock → run → aggregate.
-- **Auth service** (18) — register / login / change / reset / hash helpers.
+- **Auth service** (20) — register / login / change / reset / hash helpers.
 - **Auth routes** (7) — full HTTP flow via FastAPI TestClient.
-- **Questions routes** (6) — list, import, two-person review, 403 + 404.
-- **Runs orchestration** (5) — happy path, partial failure, total failure.
+- **Questions routes** (13) — list, import preview, two-person review, edit, 403 + 404.
+- **Runs orchestration** (6) — happy path, partial failure, total failure, cancellation.
+- **Runs routes** (10) — list, new-run modal, status fragment, leaderboard, cancel.
+- **Template smoke** (5) — every rendered template returns 200.
 - **End-to-end** (1) — login → import → review → lock → run → leaderboard,
   all via HTTP, with a mocked adapter.
 
-51 tests, ~14 s on a laptop.
+76 tests, ~30 s on a laptop.
 
 ---
 
