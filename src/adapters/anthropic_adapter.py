@@ -1,7 +1,7 @@
 """Anthropic (Claude) adapter — stub.
 
-Not wired to the real Anthropic SDK yet. Kept here so the adapter surface is
-visible and so the CLI can be extended later without restructuring.
+Not wired to the real Anthropic SDK yet. Kept so the adapter surface is
+visible alongside the OpenAI / OpenRouter implementations.
 
 To finish this adapter:
     1. Add `anthropic` to `requirements.txt` / `pyproject.toml`.
@@ -10,7 +10,11 @@ To finish this adapter:
          - call `client.messages.create(...)`
          - retry/backoff on transient errors
          - return `ModelResult(model_id=..., raw_text=..., meta={...})`
-    4. Wire it into `src/runner/api_runner.py` (e.g. add `run_anthropic_models`).
+    4. Register the adapter in `src/adapters/registry.py` (the `provider:model`
+       lookup used by `src.benchmark.runs.execute_run`).
+
+Until then, the recommended path is to route Claude traffic through the
+OpenRouter adapter (`openrouter:anthropic/...`), which is already wired.
 """
 
 from __future__ import annotations
