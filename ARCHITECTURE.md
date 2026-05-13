@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the current architecture of **Inno LLM Scoring — Next Level**: modules, data flow, and the SQLite persistence model.
+This document describes the current architecture of **LLM Arena**: modules, data flow, and the SQLite persistence model.
 
 ---
 

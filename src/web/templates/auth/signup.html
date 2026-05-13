@@ -1,15 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Create account · Inno LLM Scoring{% endblock %}
+{% block title %}Create account · LLM Arena{% endblock %}
 
 {% block shell %}
 <main class="auth-shell">
   <div class="auth-card">
     <div class="auth-brand">
-      <span class="brand-mark" aria-hidden="true">N</span>
-      <div>
-        <div class="fw-700">Inno LLM Scoring</div>
-        <div class="muted text-sm">Next Level</div>
-      </div>
+      <img class="brand-logo brand-logo-lg" src="{{ url_for('static', filename='img/logo.png') }}" alt="LLM Arena">
     </div>
 
     <h1>Create your account</h1>

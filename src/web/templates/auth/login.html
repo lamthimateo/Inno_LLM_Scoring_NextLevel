@@ -1,16 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Sign in · Inno LLM Scoring{% endblock %}
+{% block title %}Sign in · LLM Arena{% endblock %}
 
-{# Auth pages skip the regular nav/footer shell #}
+{# Auth pages skip the regular nav shell #}
 {% block shell %}
 <main class="auth-shell">
   <div class="auth-card">
     <div class="auth-brand">
-      <span class="brand-mark" aria-hidden="true">N</span>
-      <div>
-        <div class="fw-700">Inno LLM Scoring</div>
-        <div class="muted text-sm">Next Level</div>
-      </div>
+      <img class="brand-logo brand-logo-lg" src="{{ url_for('static', filename='img/logo.png') }}" alt="LLM Arena">
     </div>
 
     <h1>Welcome back</h1>

@@ -33,7 +33,7 @@ SESSION_COOKIE_NAME = "inno_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 7  # one week
 
 
-app = FastAPI(title="Inno LLM Scoring", version=APP_VERSION)
+app = FastAPI(title="LLM Arena", version=APP_VERSION)
 
 
 app.add_middleware(
