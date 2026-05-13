@@ -8,13 +8,15 @@ GET  /runs/new               new-run form
 POST /runs/new               create + start background run, redirect
 GET  /runs/{run_id}          detail (auto-polls progress + leaderboard)
 GET  /runs/{run_id}/status   HTMX fragment for progress polling
+POST /runs/{run_id}/cancel   request cancellation of an in-flight run
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -22,9 +24,15 @@ from src.adapters.registry import DEFAULT_MODELS
 from src.auth.dependencies import require_login
 from src.benchmark.exporting import fetch_leaderboard_rows
 from src.benchmark.queries import list_sets
-from src.benchmark.runs import RunError, create_run, list_runs, run_in_background
+from src.benchmark.runs import (
+    RunError,
+    create_run,
+    list_runs,
+    request_cancellation,
+    run_in_background,
+)
 from src.storage.db import get_session
-from src.storage.models import Job, Run, SetStatus, User
+from src.storage.models import AuditLog, Job, JobStatus, Run, SetStatus, User, UserRole
 from src.web.templating import render
 
 
@@ -190,3 +198,63 @@ def status_fragment(
         job=job,
         rows=rows,
     )
+
+
+_ACTIVE_JOB_STATES = {JobStatus.QUEUED.value, JobStatus.RUNNING.value}
+
+
+@router.post("/{run_id}/cancel")
+def cancel(
+    request: Request,
+    run_id: str,
+    user: User = Depends(require_login),
+    session: Session = Depends(get_session),
+):
+    """Request cancellation of an in-flight run.
+
+    - 404 if the run/job is unknown.
+    - 403 if the caller is neither the user who started the run nor an admin.
+    - 303 redirect back to the run detail page on success (204 + ``HX-Redirect``
+      header when called via HTMX so the polling fragment refreshes cleanly).
+    - Idempotent for finished runs: a no-op redirect, never a 5xx.
+    """
+
+    run = session.get(Run, run_id)
+    job = session.get(Job, run_id)
+    if run is None or job is None:
+        raise HTTPException(status_code=404, detail="Run not found.")
+
+    if run.started_by_id != user.id and user.role != UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the user who started this run (or an admin) can cancel it.",
+        )
+
+    if job.status in _ACTIVE_JOB_STATES:
+        # Flip the in-process flag so the orchestrator thread exits cleanly
+        # between models. The thread will *also* set status=cancelled when it
+        # observes the flag, but we mirror it here so the next /status poll
+        # reflects the new state immediately without waiting for the current
+        # model call to return.
+        request_cancellation(run_id)
+        job.status = JobStatus.CANCELLED.value
+        job.finished_at = datetime.now(timezone.utc)
+        job.message = (job.message or "") + (
+            " · cancelled by user" if job.message else "Cancelled by user."
+        )
+        session.add(
+            AuditLog(
+                actor_id=user.id,
+                action="run.cancelled",
+                target_type="run",
+                target_id=run_id,
+            )
+        )
+        session.commit()
+
+    if request.headers.get("HX-Request"):
+        return Response(
+            status_code=204,
+            headers={"HX-Redirect": f"/runs/{run_id}"},
+        )
+    return RedirectResponse(url=f"/runs/{run_id}", status_code=303)
