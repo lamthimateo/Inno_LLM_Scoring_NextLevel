@@ -294,3 +294,70 @@ def test_questions_preview_requires_login(client_with_users):
     assert r.status_code in (302, 303, 401)
     if r.status_code in (302, 303):
         assert "/auth/login" in r.headers["location"]
+
+
+# ---------------------------------------------------------------------------
+# POST /questions/import — Save-as-draft form submit
+# ---------------------------------------------------------------------------
+
+
+def test_import_submit_creates_draft_set_with_files(client_with_users):
+    _login(client_with_users, "alice")
+
+    r = client_with_users.post(
+        "/questions/import",
+        data={"set_id": "import_smoke", "title": "Smoke", "description": "desc"},
+        files=[("files", ("c1.txt", io.BytesIO(SAMPLE.encode()), "text/plain"))],
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303), r.text
+    assert r.headers["location"].startswith("/questions/import_smoke")
+
+    s = db_module.SessionLocal()
+    try:
+        from src.storage.models import Question
+        qs = s.get(QuestionSet, "import_smoke")
+        assert qs is not None
+        assert qs.status == SetStatus.DRAFT.value
+        assert qs.title == "Smoke"
+        qids = {row.qid for row in s.query(Question).filter_by(set_id="import_smoke").all()}
+        assert qids == {"C1", "C2"}
+    finally:
+        s.close()
+
+
+def test_import_submit_rejects_duplicate_set_id(client_with_users):
+    _login(client_with_users, "alice")
+    _upload(client_with_users, set_id="dup_set")
+
+    r = client_with_users.post(
+        "/questions/import",
+        data={"set_id": "dup_set", "title": "Again", "description": ""},
+        files=[("files", ("c1.txt", io.BytesIO(SAMPLE.encode()), "text/plain"))],
+        follow_redirects=False,
+    )
+    # Re-rendered form (no redirect) with a 400 + flash error. Inputs are
+    # preserved so the user can correct the Set ID without retyping.
+    assert r.status_code == 400, r.text
+    assert "already exists" in r.text
+    assert 'value="dup_set"' in r.text
+    assert 'value="Again"' in r.text
+
+
+def test_import_submit_rejects_empty_files(client_with_users):
+    _login(client_with_users, "alice")
+
+    r = client_with_users.post(
+        "/questions/import",
+        data={"set_id": "no_files_set", "title": "Empty", "description": ""},
+        files=[],
+        follow_redirects=False,
+    )
+    assert r.status_code == 400, r.text
+    assert "at least one .txt" in r.text.lower() or "no .txt files" in r.text.lower()
+
+    s = db_module.SessionLocal()
+    try:
+        assert s.get(QuestionSet, "no_files_set") is None
+    finally:
+        s.close()

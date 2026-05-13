@@ -175,19 +175,38 @@ async def import_submit(
     error: Optional[str] = None
     form = {"set_id": set_id, "title": title, "description": description}
 
-    if not set_id.strip():
+    # Files come back from Starlette as a list of one empty UploadFile when
+    # the input is left blank — treat those as "no files" so the validation
+    # error fires before we wade into the temp-dir / parse path.
+    real_files = [f for f in files if (f.filename or "").strip()]
+
+    set_id_clean = set_id.strip()
+
+    if not set_id_clean:
         error = "Set ID is required."
-    elif not files:
+    elif session.get(QuestionSet, set_id_clean) is not None:
+        error = (
+            f"A set with ID {set_id_clean!r} already exists. "
+            "Pick a different Set ID (e.g. add a _v2 suffix)."
+        )
+    elif not real_files:
         error = "Please upload at least one .txt file."
 
     if error is None:
         with tempfile.TemporaryDirectory(prefix="import_") as tmp:
             tmpdir = Path(tmp)
             count = 0
-            for f in files:
+            for f in real_files:
                 if not (f.filename or "").lower().endswith(".txt"):
                     continue
                 target = tmpdir / Path(f.filename).name
+                # The HTMX preview may have already consumed f.file's stream
+                # cursor in front-end retries; rewind defensively before
+                # copying so the save path never sees an empty file.
+                try:
+                    f.file.seek(0)
+                except Exception:
+                    pass
                 with target.open("wb") as out:
                     shutil.copyfileobj(f.file, out)
                 count += 1
@@ -198,7 +217,7 @@ async def import_submit(
                     summary = import_questions(
                         session,
                         source=tmpdir,
-                        set_id=set_id.strip(),
+                        set_id=set_id_clean,
                         author_id=user.id,
                         title=title.strip() or None,
                         description=description.strip() or None,
@@ -209,7 +228,7 @@ async def import_submit(
                 else:
                     session.commit()
                     return _flash_redirect(
-                        f"/questions/{set_id.strip()}",
+                        f"/questions/{set_id_clean}",
                         ok=(
                             f"Imported {summary.inserted_count} questions "
                             f"({len(summary.warnings)} warnings)."
