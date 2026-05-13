@@ -14,10 +14,31 @@ clear ``RuntimeError`` rather than a cryptic SDK error.
 """
 
 import os
+import re
 import time
 from typing import Any, Dict, Optional, Tuple
 
 from .base import ModelAdapter, ModelResult
+
+
+# Matches OpenAI reasoning-model ids: an ``o<digit>`` token at the start of the
+# model id (``o1-mini``, ``o3-mini``, ``o4-mini``, ...) or right after a
+# provider prefix used by OpenRouter (``openai/o4-mini``). Case-insensitive to
+# tolerate ``O4-mini``. ``gpt-4o`` does NOT match (``4o`` is not at a boundary).
+_OPENAI_REASONING_RE = re.compile(r"(?:^|/)o\d", re.IGNORECASE)
+
+
+def _supports_temperature(model: str) -> bool:
+    """Return True if the model accepts a ``temperature`` (and ``top_p``).
+
+    OpenAI's o-series reasoning models (o1, o3, o4-mini, ...) reject
+    ``temperature`` with a 400 ``Unsupported parameter`` error. They take a
+    ``reasoning={"effort": ...}`` argument instead. We omit the sampling
+    params for them and let the API use its defaults.
+    """
+    if not model:
+        return True
+    return _OPENAI_REASONING_RE.search(model) is None
 
 
 def _extract_output_text(resp: Any) -> str:
@@ -97,15 +118,30 @@ class OpenAIAdapter(ModelAdapter):
         last_exc: Optional[Exception] = None
         resp: Any = None
         t0 = time.time()
+
+        # Build kwargs conditionally: reasoning models (o1/o3/o4-mini, ...)
+        # reject ``temperature`` and ``top_p``.
+        allow_sampling = _supports_temperature(self.model)
+        create_kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "input": prompt,
+        }
+        if max_output_tokens is not None:
+            # TODO: ``max_output_tokens`` is accepted by reasoning models but
+            # may need to be larger there to cover hidden reasoning tokens.
+            create_kwargs["max_output_tokens"] = max_output_tokens
+        if allow_sampling and temperature is not None:
+            create_kwargs["temperature"] = temperature
+        extra = dict(kwargs)
+        if not allow_sampling:
+            # Drop any caller-supplied sampling params that reasoning models reject.
+            extra.pop("temperature", None)
+            extra.pop("top_p", None)
+        create_kwargs.update(extra)
+
         for attempt in range(1, max_retries + 1):
             try:
-                resp = client.responses.create(
-                    model=self.model,
-                    input=prompt,
-                    temperature=temperature,
-                    max_output_tokens=max_output_tokens,
-                    **kwargs,
-                )
+                resp = client.responses.create(**create_kwargs)
                 last_exc = None
                 break
             except Exception as e:

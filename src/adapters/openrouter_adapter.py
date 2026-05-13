@@ -24,6 +24,7 @@ import time
 from typing import Any, Dict, Optional
 
 from .base import ModelAdapter, ModelResult
+from .openai_adapter import _supports_temperature
 
 
 def _is_retryable_exception(exc: Exception) -> bool:
@@ -95,15 +96,27 @@ class OpenRouterAdapter(ModelAdapter):
         last_exc: Optional[Exception] = None
         resp: Any = None
         t0 = time.time()
+
+        # OpenRouter routes ``openai/o4-mini`` etc. to OpenAI, which rejects
+        # ``temperature`` for reasoning models. Mirror the OpenAI adapter guard.
+        allow_sampling = _supports_temperature(self.model)
+        create_kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+        }
+        if max_output_tokens is not None:
+            create_kwargs["max_tokens"] = max_output_tokens
+        if allow_sampling and temperature is not None:
+            create_kwargs["temperature"] = temperature
+        extra = dict(kwargs)
+        if not allow_sampling:
+            extra.pop("temperature", None)
+            extra.pop("top_p", None)
+        create_kwargs.update(extra)
+
         for attempt in range(1, max_retries + 1):
             try:
-                resp = client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_output_tokens,
-                    **kwargs,
-                )
+                resp = client.chat.completions.create(**create_kwargs)
                 last_exc = None
                 break
             except Exception as e:
