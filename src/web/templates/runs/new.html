@@ -65,8 +65,10 @@
             <label for="model_ids_csv">Models <span class="muted fw-500">(one per line, format <code>provider:model</code>)</span></label>
             <textarea class="textarea text-mono" id="model_ids_csv" name="model_ids_csv" rows="6" required>{{ form.model_ids_csv if form else '' }}</textarea>
             <div class="help">
-              Default uses the 4-model OpenRouter preset (requires <code>OPENROUTER_API_KEY</code>).
-              You can also use <code>openai:&lt;model&gt;</code> for direct OpenAI (requires <code>OPENAI_API_KEY</code>).
+              Default is 4 OpenAI variants (requires <code>OPENAI_API_KEY</code>).
+              For cross-provider comparison (Anthropic, Google, DeepSeek, …) set
+              <code>OPENROUTER_API_KEY</code> in <code>.env</code> and restart — the preset will
+              switch automatically.
             </div>
           </div>
 
