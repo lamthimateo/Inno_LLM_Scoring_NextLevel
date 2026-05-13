@@ -1,92 +1,113 @@
-"""Persistence helpers for a single model run.
+"""Persistence helpers for a single model run (SQLAlchemy version).
 
-This module is the bridge between "raw model output" and "rows in SQLite".
-It is called from both ``run-file`` and ``run-openai`` so that the storage
-shape stays identical regardless of how the output was produced.
+Called from the run dispatcher (file-based or API-based) to:
 
-Functions:
+1. Insert/upsert a row into ``model_runs`` for the raw model output, then
+2. Parse + score that output against the answer key and persist
+   per-question rows into ``answers`` plus the per-run row in ``aggregates``.
 
-- :func:`load_answer_key` reads ``{qid: correct_answer}`` for a set.
-- :func:`store_model_run` inserts/updates the raw output row and returns its
-  surrogate ``model_run_id``.
-- :func:`store_answers_and_aggregates` parses the raw output, scores it
-  against the answer key, and persists both per-question rows and the
-  per-run aggregate row used by the leaderboard.
+This module is intentionally storage-aware but provider-agnostic: it takes a
+``raw_text`` string and doesn't care whether it came from a paste or an
+API call.
 """
 
-import json
-from typing import Dict, Optional
+from __future__ import annotations
+
+from typing import Any, Optional
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from src.evaluator.parser_mcq import parse_model_output
 from src.evaluator.scoring import score_answers
-
-
-def load_answer_key(conn, set_id: str) -> Dict[str, str]:
-    return {
-        r["qid"]: r["correct_answer"]
-        for r in conn.execute("SELECT qid, correct_answer FROM questions WHERE set_id=?", (set_id,))
-    }
+from src.storage.models import Aggregate, Answer, ModelRun
 
 
 def store_model_run(
-    conn,
+    session: Session,
     *,
     run_id: str,
     model_id: str,
     source: str,
     raw_text: str,
-    meta: Optional[dict],
-    created_at: str,
-) -> int:
-    meta_json = json.dumps(meta, ensure_ascii=False) if meta is not None else None
-    conn.execute(
-        "INSERT OR REPLACE INTO model_runs(run_id,model_id,source,raw_text,meta_json,created_at) VALUES(?,?,?,?,?,?)",
-        (run_id, model_id, source, raw_text, meta_json, created_at),
+    meta: Optional[dict[str, Any]] = None,
+) -> ModelRun:
+    """Upsert one (run_id, model_id) row in ``model_runs``.
+
+    Replaces any previous row for the same pair so re-runs are idempotent.
+    """
+
+    existing = session.execute(
+        select(ModelRun).where(
+            ModelRun.run_id == run_id, ModelRun.model_id == model_id
+        )
+    ).scalar_one_or_none()
+
+    if existing is not None:
+        # Wipe child rows so the upsert is clean (cascade handles answers
+        # and aggregate via FK with ON DELETE CASCADE).
+        session.delete(existing)
+        session.flush()
+
+    mr = ModelRun(
+        run_id=run_id,
+        model_id=model_id,
+        source=source,
+        raw_text=raw_text,
+        meta_json=meta,
     )
-    return conn.execute(
-        "SELECT model_run_id FROM model_runs WHERE run_id=? AND model_id=?",
-        (run_id, model_id),
-    ).fetchone()["model_run_id"]
+    session.add(mr)
+    session.flush()
+    return mr
 
 
-def store_answers_and_aggregates(conn, *, model_run_id: int, answer_key: dict, raw_text: str) -> None:
+def store_answers_and_aggregates(
+    session: Session,
+    *,
+    model_run: ModelRun,
+    answer_key: dict[str, str],
+    raw_text: str,
+) -> Aggregate:
+    """Parse + score ``raw_text`` and persist per-question + aggregate rows."""
+
     parsed, format_violations = parse_model_output(raw_text)
     per_q, per_cat = score_answers(answer_key, parsed)
 
     correct = wrong = blank = 0
-    for qid, s in per_q.items():
+    for qid, score in per_q.items():
         given = parsed.get(qid)
         if given is None:
             blank += 1
-        elif s == 1:
+        elif score == 1:
             correct += 1
         else:
             wrong += 1
 
-        conn.execute(
-            "INSERT OR REPLACE INTO answers(model_run_id,qid,given_answer,correct_answer,score) VALUES(?,?,?,?,?)",
-            (model_run_id, qid, given, answer_key.get(qid), s),
+        session.add(
+            Answer(
+                model_run_id=model_run.model_run_id,
+                qid=qid,
+                given_answer=given,
+                correct_answer=answer_key.get(qid),
+                score=score,
+            )
         )
 
     total = sum(per_q.values())
-    conn.execute(
-        """INSERT OR REPLACE INTO aggregates(
-               model_run_id,total_score,chemistry,emotions,math,reasoning3d,no_knowledge,contradiction,
-               correct_count,wrong_count,blank_count,format_violations
-           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (
-            model_run_id,
-            total,
-            per_cat["chemistry"],
-            per_cat["emotions"],
-            per_cat["math"],
-            per_cat["reasoning3d"],
-            per_cat["no_knowledge"],
-            per_cat["contradiction"],
-            correct,
-            wrong,
-            blank,
-            format_violations,
-        ),
+    agg = Aggregate(
+        model_run_id=model_run.model_run_id,
+        total_score=total,
+        chemistry=per_cat["chemistry"],
+        emotions=per_cat["emotions"],
+        math=per_cat["math"],
+        reasoning3d=per_cat["reasoning3d"],
+        no_knowledge=per_cat["no_knowledge"],
+        contradiction=per_cat["contradiction"],
+        correct_count=correct,
+        wrong_count=wrong,
+        blank_count=blank,
+        format_violations=format_violations,
     )
-
+    session.add(agg)
+    session.flush()
+    return agg

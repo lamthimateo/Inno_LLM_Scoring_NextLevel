@@ -2,10 +2,12 @@
 
 Modules:
 
-- ``cli``        — argparse entrypoint exposing every subcommand
-- ``importing``  — parse answer-key text files into SQLite ``questions``
+- ``importing``  — parse answer-key text files + persist into ``question_sets`` and ``questions``
+- ``workflow``   — review state transitions (draft / in_review / approved / locked)
 - ``prompting``  — build the strict ``QID: LETTER`` prompt sent to models
-- ``pipeline``   — persistence helpers (raw output, parsed answers, aggregates)
+- ``pipeline``   — persistence helpers for one model run (raw output + answers + aggregate)
 - ``exporting``  — write CSV + static leaderboard assets
-- ``constants``  — shared defaults (e.g. DB path)
+
+The CLI was removed in v0.2.0. All flows are driven from the web UI under
+:mod:`src.web`.
 """

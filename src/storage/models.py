@@ -30,6 +30,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     Text,
@@ -195,16 +196,13 @@ class Question(Base):
     )
 
     set: Mapped["QuestionSet"] = relationship(back_populates="questions")
-    versions: Mapped[list["QuestionVersion"]] = relationship(
-        back_populates="question",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        order_by="QuestionVersion.version.desc()",
-    )
 
 
 class QuestionVersion(Base):
-    """Snapshot of a question at a particular version. Append-only."""
+    """Append-only snapshot of a question at a particular version.
+
+    Used by the edit/diff view to show how a question evolved during review.
+    """
 
     __tablename__ = "question_versions"
 
@@ -224,35 +222,15 @@ class QuestionVersion(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    question: Mapped["Question"] = relationship(
-        back_populates="versions",
-        primaryjoin="and_(QuestionVersion.qid==Question.qid, "
-        "QuestionVersion.set_id==Question.set_id)",
-        foreign_keys=[qid, set_id],
-    )
-
     __table_args__ = (
         UniqueConstraint("qid", "set_id", "version", name="uq_qversion_qid_setid_version"),
-        ForeignKey(
-            # composite FK declared as table arg
+        ForeignKeyConstraint(
+            ["qid", "set_id"],
+            ["questions.qid", "questions.set_id"],
+            ondelete="CASCADE",
+            name="fk_qversion_to_question",
         ),
     )
-
-
-# Composite FK on question_versions -> questions(qid, set_id). Declared
-# imperatively because Alembic auto-generate handles composite FKs better
-# when they're in __table_args__.
-from sqlalchemy import ForeignKeyConstraint  # noqa: E402
-
-QuestionVersion.__table_args__ = (
-    UniqueConstraint("qid", "set_id", "version", name="uq_qversion_qid_setid_version"),
-    ForeignKeyConstraint(
-        ["qid", "set_id"],
-        ["questions.qid", "questions.set_id"],
-        ondelete="CASCADE",
-        name="fk_qversion_to_question",
-    ),
-)
 
 
 # ---------------------------------------------------------------------------

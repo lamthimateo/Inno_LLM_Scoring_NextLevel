@@ -7,20 +7,30 @@ build a prompt — this keeps benchmark runs reproducible against a frozen
 question set.
 """
 
-import json
+from __future__ import annotations
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from src.storage.models import Question, QuestionSet, SetStatus
 
 
-def build_prompt_text(conn, set_id: str) -> str:
-    row = conn.execute("SELECT status FROM question_sets WHERE set_id=?", (set_id,)).fetchone()
-    if not row:
-        raise SystemExit(f"Unknown set_id: {set_id}")
-    if row["status"] not in ("approved", "locked"):
-        raise SystemExit("Set must be approved/locked to build prompt.")
+class PromptingError(ValueError):
+    """Raised when the prompt cannot be built (unknown set, wrong status)."""
 
-    questions = conn.execute(
-        "SELECT qid, category, prompt, choices_json FROM questions WHERE set_id=? ORDER BY qid",
-        (set_id,),
-    ).fetchall()
+
+def build_prompt_text(session: Session, set_id: str) -> str:
+    qs = session.get(QuestionSet, set_id)
+    if qs is None:
+        raise PromptingError(f"Unknown set_id: {set_id!r}")
+    if qs.status not in (SetStatus.APPROVED.value, SetStatus.LOCKED.value):
+        raise PromptingError(
+            f"Set must be approved or locked to build a prompt (got {qs.status!r})."
+        )
+
+    questions = session.execute(
+        select(Question).where(Question.set_id == set_id).order_by(Question.qid)
+    ).scalars().all()
 
     header = (
         "You will answer a multiple-choice benchmark.\n\n"
@@ -34,15 +44,13 @@ def build_prompt_text(conn, set_id: str) -> str:
         "ANSWER TEMPLATE (fill letters):\n"
     )
 
-    template_txt = "\n".join([f"{q['qid']}: " for q in questions])
+    template_txt = "\n".join(f"{q.qid}: " for q in questions)
 
-    body = ["\n\nQUESTIONS:\n"]
+    body: list[str] = ["", "", "QUESTIONS:", ""]
     for q in questions:
-        choices = json.loads(q["choices_json"])
-        body.append(f"{q['qid']}. {q['prompt']}")
-        for c in choices:
+        body.append(f"{q.qid}. {q.prompt}")
+        for c in q.choices_json:
             body.append(f"{c['label']}. {c['text']}")
         body.append("")
 
-    return header + template_txt + "\n" + "\n".join(body)
-
+    return header + template_txt + "\n".join(body)
