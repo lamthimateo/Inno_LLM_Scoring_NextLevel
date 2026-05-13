@@ -1,0 +1,86 @@
+{# Status + leaderboard fragment, replaced via HTMX every 2s. #}
+<div id="run-status"
+     hx-get="/runs/{{ run.run_id }}/status"
+     {% if job.status in ('done', 'error', 'cancelled') %}data-stopped="true"{% else %}hx-trigger="every 2s" hx-swap="outerHTML" hx-select="#run-status"{% endif %}>
+
+  <section class="card stat-row">
+    <div class="stat">
+      <span class="stat__label">Status</span>
+      <strong class="stat__value">
+        <span class="pill pill--{{ job.status }}">{{ job.status.replace('_', ' ') }}</span>
+      </strong>
+    </div>
+    <div class="stat">
+      <span class="stat__label">Progress</span>
+      <strong class="stat__value">{{ job.progress_done }} / {{ job.progress_total }}</strong>
+    </div>
+    <div class="stat">
+      <span class="stat__label">Models scored</span>
+      <strong class="stat__value">{{ rows | length }}</strong>
+    </div>
+    <div class="stat">
+      <span class="stat__label">Started</span>
+      <strong class="stat__value muted">{{ (job.started_at | string) if job.started_at else '—' }}</strong>
+    </div>
+  </section>
+
+  {% if job.progress_total %}
+  <div class="progress card">
+    <div class="progress__bar" style="width: {{ (job.progress_done * 100 // job.progress_total) if job.progress_total else 0 }}%"></div>
+  </div>
+  {% endif %}
+
+  {% if job.message %}
+  <div class="flash flash--ok">{{ job.message }}</div>
+  {% endif %}
+  {% if job.error %}
+  <div class="flash flash--err">{{ job.error }}</div>
+  {% endif %}
+
+  <section class="card">
+    <h2 class="card__title">Leaderboard</h2>
+    {% if rows %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th class="num">Total</th>
+            <th class="num">Correct</th>
+            <th class="num">Wrong</th>
+            <th class="num">Blank</th>
+            <th class="num">Chemistry</th>
+            <th class="num">Emotions</th>
+            <th class="num">Math</th>
+            <th class="num">3D Reasoning</th>
+            <th class="num">No knowledge</th>
+            <th class="num">Contradiction</th>
+            <th class="num">Format violations</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="mono">{{ r.model_id }}</td>
+            <td class="num"><strong>{{ r.total }}</strong></td>
+            <td class="num">{{ r.correct }}</td>
+            <td class="num">{{ r.wrong }}</td>
+            <td class="num">{{ r.blank }}</td>
+            <td class="num">{{ r.chemistry }}</td>
+            <td class="num">{{ r.emotions }}</td>
+            <td class="num">{{ r.math }}</td>
+            <td class="num">{{ r.reasoning3d }}</td>
+            <td class="num">{{ r.no_knowledge }}</td>
+            <td class="num">{{ r.contradiction }}</td>
+            <td class="num">{{ r.format_violations }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="muted">No models have finished yet.</p>
+    {% endif %}
+  </section>
+
+</div>

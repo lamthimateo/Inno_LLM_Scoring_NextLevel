@@ -1,0 +1,60 @@
+{% extends "_base.html" %}
+{% block title %}New run · Inno LLM Scoring{% endblock %}
+
+{% block content %}
+<header class="pageheader">
+  <div class="pageheader__title">
+    <h1>Start a new evaluation run</h1>
+    <p>Pick a locked set and the models you want to compare.</p>
+  </div>
+  <div class="pageheader__actions">
+    <a class="btn btn--ghost" href="/runs">← Back to runs</a>
+  </div>
+</header>
+
+{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+
+{% if not locked_sets %}
+<div class="card empty">
+  <h2 class="empty__title">No locked sets yet</h2>
+  <p class="empty__body">
+    Only locked sets can be evaluated. Take a draft through review and locking first.
+  </p>
+  <a class="btn btn--primary" href="/questions">Go to Questions →</a>
+</div>
+{% else %}
+<form method="post" action="/runs/new" class="card form form--wide">
+  <div class="form__row">
+    <span class="form__label">Question set</span>
+    <select class="form__select" name="set_id" required>
+      <option value="" disabled {% if not form.set_id %}selected{% endif %}>— pick a locked set —</option>
+      {% for s in locked_sets %}
+        <option value="{{ s.set_id }}" {% if form.set_id == s.set_id %}selected{% endif %}>
+          {{ s.title or s.set_id }} ({{ s.question_count }} questions)
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="form__row">
+    <span class="form__label">Models (one per line, format <code>provider:model</code>)</span>
+    <textarea class="form__textarea mono" name="model_ids_csv" rows="6" required>{{ form.model_ids_csv }}</textarea>
+    <small class="form__hint">
+      Default: 4 models via OpenRouter. Requires <code>OPENROUTER_API_KEY</code>.
+      You can also use <code>openai:&lt;model&gt;</code> for direct OpenAI calls
+      (requires <code>OPENAI_API_KEY</code>).
+    </small>
+  </div>
+
+  <div class="form__row">
+    <span class="form__label">Notes <span class="form__optional">(optional)</span></span>
+    <input class="form__input" name="notes" value="{{ form.notes }}" placeholder="What is this run testing?" />
+  </div>
+
+  <div class="form__actions">
+    <a class="btn btn--ghost" href="/runs">Cancel</a>
+    <button class="btn btn--primary" type="submit">Start run →</button>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

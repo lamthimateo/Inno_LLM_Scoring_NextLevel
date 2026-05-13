@@ -1,0 +1,39 @@
+{% extends "_base.html" %}
+{% block title %}{{ run.run_id }} · Run · Inno LLM Scoring{% endblock %}
+
+{% block content %}
+<header class="pageheader">
+  <div class="pageheader__title">
+    <h1>Run <span class="mono">{{ run.run_id }}</span></h1>
+    <p>
+      Against set <a class="link" href="/questions/{{ run.set_id }}">{{ run.set_id }}</a>.
+      Started by {{ run.started_by_id and ('user #' + run.started_by_id | string) or 'system' }}.
+    </p>
+    {% if run.notes %}<p class="muted">{{ run.notes }}</p>{% endif %}
+  </div>
+  <div class="pageheader__actions">
+    <a class="btn btn--ghost" href="/runs">← Back to runs</a>
+  </div>
+</header>
+
+{# Poll the status fragment every 2s until the job completes. #}
+<div id="run-status"
+     hx-get="/runs/{{ run.run_id }}/status"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     hx-select="#run-status"
+     {% if job.status in ('done', 'error', 'cancelled') %}data-stopped="true"{% endif %}>
+  {% include "runs/_status_fragment.html" %}
+</div>
+
+<script>
+  // Stop polling once the run reaches a terminal state.
+  document.body.addEventListener("htmx:afterSettle", function (e) {
+    var el = document.getElementById("run-status");
+    if (el && el.dataset.stopped === "true") {
+      el.removeAttribute("hx-trigger");
+      el.removeAttribute("hx-get");
+    }
+  });
+</script>
+{% endblock %}
