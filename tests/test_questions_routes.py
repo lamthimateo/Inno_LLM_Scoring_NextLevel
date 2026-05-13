@@ -206,6 +206,150 @@ def test_detail_page_hides_submit_button_for_non_author(client_with_users):
 
 
 # ---------------------------------------------------------------------------
+# Reviewer picker on the submit-for-review form
+# ---------------------------------------------------------------------------
+
+
+def _user_id(username: str) -> int:
+    from sqlalchemy import select as _select
+    from src.storage.models import User as _User
+    s = db_module.SessionLocal()
+    try:
+        return s.execute(_select(_User.id).where(_User.username == username)).scalar_one()
+    finally:
+        s.close()
+
+
+def test_detail_page_shows_reviewer_picker_with_eligible_users(client_with_users):
+    """Author should see a <select name='reviewer_id'> populated with every
+    user whose role is reviewer/admin, EXCLUDING themselves."""
+
+    _login(client_with_users, "alice")
+    _upload(client_with_users, set_id="picker_smoke")
+
+    r = client_with_users.get("/questions/picker_smoke")
+    assert r.status_code == 200
+    body = r.text
+
+    assert 'name="reviewer_id"' in body, "reviewer picker must render in the submit form"
+    assert ">@bob" in body, "the reviewer 'bob' should be an eligible option"
+    assert ">@root" in body, "the admin 'root' should be an eligible option"
+    assert ">@alice" not in body, "the author 'alice' must not be offered as their own reviewer"
+    # Submit button remains visible (not disabled) when reviewers exist.
+    assert "Submit for review" in body
+    assert "No eligible reviewer found" not in body
+
+
+def test_detail_page_shows_no_reviewers_help_when_none_eligible(client_with_users):
+    """If the only user is the author, the submit button is disabled and we
+    show inline help guiding the author to ask an admin."""
+
+    # Wipe seeded reviewer/admin users; keep only alice (author).
+    s = db_module.SessionLocal()
+    try:
+        from src.storage.models import User as _User
+        for username in ("bob", "root"):
+            u = s.query(_User).filter_by(username=username).one()
+            s.delete(u)
+        s.commit()
+    finally:
+        s.close()
+
+    _login(client_with_users, "alice")
+    _upload(client_with_users, set_id="lonely_set")
+
+    r = client_with_users.get("/questions/lonely_set")
+    assert r.status_code == 200
+    body = r.text
+
+    assert "No eligible reviewer found" in body
+    assert 'name="reviewer_id"' not in body, "picker must be hidden when nothing to pick"
+    # Submit button is still rendered but disabled.
+    assert "Submit for review" in body
+    assert "disabled" in body
+
+
+def test_submit_review_succeeds_with_valid_reviewer(client_with_users):
+    _login(client_with_users, "alice")
+    _upload(client_with_users, set_id="happy_path")
+    bob_id = _user_id("bob")
+
+    r = client_with_users.post(
+        "/questions/happy_path/submit-review",
+        data={"reviewer_id": bob_id},
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303), r.text
+    assert r.headers["location"].startswith("/questions/happy_path")
+    assert "ok=" in r.headers["location"], "success flash should be present"
+
+    s = db_module.SessionLocal()
+    try:
+        qs = s.get(QuestionSet, "happy_path")
+        assert qs.status == SetStatus.IN_REVIEW.value
+        assert qs.reviewer_id == bob_id
+    finally:
+        s.close()
+
+
+def test_submit_review_rejects_author_as_reviewer(client_with_users):
+    _login(client_with_users, "alice")
+    _upload(client_with_users, set_id="self_review")
+    alice_id = _user_id("alice")
+
+    r = client_with_users.post(
+        "/questions/self_review/submit-review",
+        data={"reviewer_id": alice_id},
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303, 400)
+    if r.status_code in (302, 303):
+        assert "error=" in r.headers["location"]
+
+    s = db_module.SessionLocal()
+    try:
+        qs = s.get(QuestionSet, "self_review")
+        assert qs.status == SetStatus.DRAFT.value
+        assert qs.reviewer_id is None
+    finally:
+        s.close()
+
+
+def test_submit_review_rejects_non_reviewer_user(client_with_users):
+    """A user whose role is neither reviewer nor admin must not be accepted
+    as a reviewer for the two-person review rule."""
+
+    # Make a fresh "author-only" user to play the non-reviewer role.
+    s = db_module.SessionLocal()
+    try:
+        register_user(s, username="carol", password="strongpass1", role=UserRole.AUTHOR.value)
+        s.commit()
+    finally:
+        s.close()
+    carol_id = _user_id("carol")
+
+    _login(client_with_users, "alice")
+    _upload(client_with_users, set_id="bad_reviewer")
+
+    r = client_with_users.post(
+        "/questions/bad_reviewer/submit-review",
+        data={"reviewer_id": carol_id},
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303, 400)
+    if r.status_code in (302, 303):
+        assert "error=" in r.headers["location"]
+
+    s = db_module.SessionLocal()
+    try:
+        qs = s.get(QuestionSet, "bad_reviewer")
+        assert qs.status == SetStatus.DRAFT.value
+        assert qs.reviewer_id is None
+    finally:
+        s.close()
+
+
+# ---------------------------------------------------------------------------
 # POST /questions/preview — HTMX live preview fragment
 # ---------------------------------------------------------------------------
 

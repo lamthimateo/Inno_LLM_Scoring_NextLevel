@@ -29,9 +29,23 @@
        (these own the author/reviewer/admin matrix — keep them as the
        single source of truth so template + route can't drift). #}
     {% if can_submit %}
-      <form method="post" action="{{ url_for('questions.submit_review', set_id=set.set_id) }}">
+      <form method="post"
+            action="{{ url_for('questions.submit_review', set_id=set.set_id) }}"
+            class="form-inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
-        <button class="btn btn-primary" type="submit">Submit for review</button>
+        {% if eligible_reviewers %}
+          <label for="reviewer_id" class="muted text-sm">Reviewer</label>
+          <select id="reviewer_id" name="reviewer_id" class="select" required>
+            {% for r in eligible_reviewers %}
+              <option value="{{ r.id }}">@{{ r.username }} ({{ r.role }})</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-primary" type="submit">Submit for review</button>
+        {% else %}
+          <button class="btn btn-primary" type="submit" disabled
+                  aria-disabled="true">Submit for review</button>
+          <span class="muted text-sm">No eligible reviewer found. Ask an admin to create a reviewer account.</span>
+        {% endif %}
       </form>
     {% elif can_approve %}
       <form method="post" action="{{ url_for('questions.approve', set_id=set.set_id) }}">

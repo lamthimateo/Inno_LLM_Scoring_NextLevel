@@ -27,6 +27,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.auth.dependencies import require_login
@@ -337,6 +338,22 @@ def detail(
         # adapt our ORM list-of-dicts to the {letter: text} dict it wants.
         q.choices = {c["label"]: c["text"] for c in (q.choices_json or [])}
 
+    # Eligible reviewers for the submit-for-review picker: every active user
+    # whose role is reviewer or admin, EXCEPT the current user (the author
+    # can't review their own set — enforced again by the workflow + POST
+    # route as a defense in depth).
+    eligible_reviewers = list(
+        session.execute(
+            select(User)
+            .where(
+                User.role.in_((UserRole.REVIEWER.value, UserRole.ADMIN.value)),
+                User.id != user.id,
+                User.is_active.is_(True),
+            )
+            .order_by(User.username)
+        ).scalars()
+    )
+
     return render(
         request,
         "questions/detail.html",
@@ -346,6 +363,7 @@ def detail(
         set=qs,  # alias for the design-system templates
         questions=questions,
         counts_by_cat=counts_by_cat,
+        eligible_reviewers=eligible_reviewers,
         can_view_answers=True,
         can_edit=(
             qs.status in (SetStatus.DRAFT.value, SetStatus.IN_REVIEW.value)
@@ -543,6 +561,26 @@ def submit_review_view(
     if qs is None:
         raise HTTPException(status_code=404, detail="Question set not found.")
     _ensure_author_or_admin(user, qs)
+
+    # Two-person review: validate the chosen reviewer at the route layer
+    # before delegating to the workflow. Keeps the error message friendly
+    # ("not a reviewer") instead of letting an FK or workflow check fire.
+    reviewer = session.get(User, reviewer_id)
+    if reviewer is None:
+        return _flash_redirect(
+            f"/questions/{set_id}", error="Selected reviewer does not exist."
+        )
+    if reviewer.role not in (UserRole.REVIEWER.value, UserRole.ADMIN.value):
+        return _flash_redirect(
+            f"/questions/{set_id}",
+            error="Selected user is not eligible to review (must be a reviewer or admin).",
+        )
+    if qs.author_id is not None and qs.author_id == reviewer.id:
+        return _flash_redirect(
+            f"/questions/{set_id}",
+            error="You can't review your own set — pick a different reviewer.",
+        )
+
     try:
         submit_review(
             session, set_id=set_id, reviewer_id=reviewer_id, actor_id=user.id
@@ -551,7 +589,9 @@ def submit_review_view(
         session.rollback()
         return _flash_redirect(f"/questions/{set_id}", error=str(exc))
     session.commit()
-    return _flash_redirect(f"/questions/{set_id}", ok="Submitted for review.")
+    return _flash_redirect(
+        f"/questions/{set_id}", ok=f"Sent for review to @{reviewer.username}."
+    )
 
 
 @router.post("/{set_id}/approve")
