@@ -1,0 +1,56 @@
+{% extends "_base.html" %}
+{% block title %}Import question set · Inno LLM Scoring{% endblock %}
+
+{% block content %}
+<header class="pageheader">
+  <div class="pageheader__title">
+    <h1>Import a question set</h1>
+    <p>Upload one or more <code>.txt</code> answer-key files. The set lands as <strong>draft</strong>.</p>
+  </div>
+  <div class="pageheader__actions">
+    <a class="btn btn--ghost" href="/questions">← Back to list</a>
+  </div>
+</header>
+
+{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+
+<form method="post" action="/questions/import" enctype="multipart/form-data" class="card form form--wide">
+  <div class="form__row">
+    <span class="form__label">Set ID</span>
+    <input class="form__input mono" name="set_id"
+           value="{{ form.set_id or '' }}"
+           pattern="[a-z0-9._\-]+"
+           minlength="3" maxlength="48"
+           placeholder="benchmark_2026_q2" required autofocus />
+    <small class="form__hint">Lowercase letters, digits, dashes, dots. Used in the URL.</small>
+  </div>
+
+  <div class="form__row">
+    <span class="form__label">Title <span class="form__optional">(optional)</span></span>
+    <input class="form__input" name="title"
+           value="{{ form.title or '' }}"
+           placeholder="MCQ Benchmark — Spring 2026" />
+  </div>
+
+  <div class="form__row">
+    <span class="form__label">Description <span class="form__optional">(optional)</span></span>
+    <textarea class="form__textarea" name="description"
+              placeholder="Notes for reviewers…">{{ form.description or '' }}</textarea>
+  </div>
+
+  <div class="form__row">
+    <span class="form__label">Files</span>
+    <input class="form__input" type="file" name="files" accept=".txt" multiple required />
+    <small class="form__hint">
+      Expected format: <code>C1. Prompt</code> + <code>A. choice</code> … <code>E. choice</code> +
+      <code>Correct answer: B</code>. QID prefix → category:
+      C=chemistry · E=emotions · M=math · A=reasoning3d · N=no_knowledge · X=contradiction.
+    </small>
+  </div>
+
+  <div class="form__actions">
+    <a class="btn btn--ghost" href="/questions">Cancel</a>
+    <button class="btn btn--primary" type="submit">Save as draft</button>
+  </div>
+</form>
+{% endblock %}

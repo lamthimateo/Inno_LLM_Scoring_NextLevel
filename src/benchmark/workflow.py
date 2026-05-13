@@ -20,7 +20,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from src.storage.models import AuditLog, QuestionSet, SetStatus
+from src.storage.models import AuditLog, Question, QuestionSet, QuestionVersion, SetStatus
 
 
 class WorkflowError(ValueError):
@@ -138,6 +138,67 @@ def lock(
     _audit(session, actor_id=actor_id, action="lock", target_id=set_id)
     session.flush()
     return qs
+
+
+def update_question(
+    session: Session,
+    *,
+    set_id: str,
+    qid: str,
+    prompt: str,
+    choices: list[dict],
+    correct_answer: Optional[str],
+    category: Optional[str] = None,
+    actor_id: Optional[int] = None,
+) -> Question:
+    """Apply an edit to a single question and snapshot the previous version.
+
+    Edits are only allowed while the set is in ``draft`` or ``in_review``;
+    once approved/locked the set is frozen.
+    """
+
+    qs = _get_set(session, set_id)
+    if qs.status in (SetStatus.APPROVED.value, SetStatus.LOCKED.value):
+        raise WorkflowError(
+            f"Cannot edit questions: set is {qs.status!r}. "
+            "Revert to draft if you need to make changes."
+        )
+
+    q = session.get(Question, (qid, set_id))
+    if q is None:
+        raise WorkflowError(f"Unknown question {qid!r} in set {set_id!r}.")
+
+    # Snapshot the current version BEFORE mutating.
+    session.add(
+        QuestionVersion(
+            qid=q.qid,
+            set_id=q.set_id,
+            version=q.version,
+            category=q.category,
+            prompt=q.prompt,
+            choices_json=q.choices_json,
+            correct_answer=q.correct_answer,
+            scoring_rule=q.scoring_rule,
+            changed_by_id=actor_id,
+        )
+    )
+
+    q.prompt = prompt
+    q.choices_json = choices
+    q.correct_answer = correct_answer
+    if category is not None:
+        q.category = category
+    q.version = q.version + 1
+
+    _audit(
+        session,
+        actor_id=actor_id,
+        action="edit_question",
+        target_id=f"{set_id}/{qid}",
+        payload={"new_version": q.version},
+    )
+    session.flush()
+    return q
 
 
 def revert_to_draft(

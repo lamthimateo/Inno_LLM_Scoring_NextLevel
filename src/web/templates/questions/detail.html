@@ -1,0 +1,117 @@
+{% extends "_base.html" %}
+{% block title %}{{ qs.title or qs.set_id }} · Questions{% endblock %}
+
+{% block content %}
+<header class="pageheader">
+  <div class="pageheader__title">
+    <div class="row">
+      <h1>{{ qs.title or qs.set_id }}</h1>
+      <span class="pill pill--{{ qs.status }}">{{ qs.status.replace('_', ' ') }}</span>
+    </div>
+    <p class="mono muted">{{ qs.set_id }}</p>
+    {% if qs.description %}<p>{{ qs.description }}</p>{% endif %}
+  </div>
+  <div class="pageheader__actions">
+    <a class="btn btn--ghost" href="/questions">← Back</a>
+    {% if can_edit %}
+      <a class="btn" href="/questions/{{ qs.set_id }}/edit">Edit metadata</a>
+    {% endif %}
+  </div>
+</header>
+
+<div class="grid grid--3">
+  <article class="card stat">
+    <span class="stat__label">Questions</span>
+    <strong class="stat__value">{{ questions | length }}</strong>
+  </article>
+  <article class="card stat">
+    <span class="stat__label">Author</span>
+    <strong class="stat__value">{{ qs.author.username if qs.author else '—' }}</strong>
+  </article>
+  <article class="card stat">
+    <span class="stat__label">Reviewer</span>
+    <strong class="stat__value">{{ qs.reviewer.username if qs.reviewer else '—' }}</strong>
+  </article>
+</div>
+
+{# ---- Workflow actions card ---- #}
+<section class="card workflow">
+  <h2 class="card__title">Workflow</h2>
+
+  {% if can_submit %}
+    <form method="post" action="/questions/{{ qs.set_id }}/submit-review" class="form form--inline">
+      <span class="form__label">Reviewer ID</span>
+      <input class="form__input form__input--small" type="number" name="reviewer_id" min="1" placeholder="user id" required />
+      <button class="btn btn--primary" type="submit">Submit for review →</button>
+      <small class="form__hint">Reviewer must be a different user than the author.</small>
+    </form>
+  {% endif %}
+
+  {% if can_approve %}
+    <form method="post" action="/questions/{{ qs.set_id }}/approve" class="form form--inline">
+      <button class="btn btn--primary" type="submit">Approve →</button>
+      <small class="form__hint">You are signing off as reviewer.</small>
+    </form>
+  {% endif %}
+
+  {% if can_lock %}
+    <form method="post" action="/questions/{{ qs.set_id }}/lock" class="form form--inline">
+      <button class="btn btn--primary" type="submit">Lock for evaluation →</button>
+      <small class="form__hint">Once locked, no further edits are possible.</small>
+    </form>
+  {% endif %}
+
+  {% if can_revert %}
+    <form method="post" action="/questions/{{ qs.set_id }}/revert" class="form form--inline">
+      <input class="form__input form__input--small" type="text" name="reason" placeholder="reason (optional)" />
+      <button class="btn btn--ghost" type="submit">Revert to draft</button>
+    </form>
+  {% endif %}
+
+  {% if not (can_submit or can_approve or can_lock or can_revert) %}
+    <p class="muted">No actions available to you in the current state.</p>
+  {% endif %}
+</section>
+
+{# ---- Questions table ---- #}
+<section class="card">
+  <h2 class="card__title">Questions ({{ questions | length }})</h2>
+
+  {% if counts_by_cat %}
+  <div class="chips chips--read">
+    {% for cat, n in counts_by_cat.items() %}
+      <span class="chip"><strong>{{ cat }}</strong><span class="chip__count">{{ n }}</span></span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>QID</th>
+          <th>Category</th>
+          <th>Prompt</th>
+          <th>Correct</th>
+          <th>Version</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for q in questions %}
+        <tr>
+          <td class="mono">{{ q.qid }}</td>
+          <td>{{ q.category }}</td>
+          <td class="truncate">{{ q.prompt }}</td>
+          <td class="mono">{{ q.correct_answer or '—' }}</td>
+          <td class="mono">v{{ q.version }}</td>
+          <td><a class="btn btn--ghost btn--sm" href="/questions/{{ qs.set_id }}/{{ q.qid }}">View</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted">No questions in this set.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
