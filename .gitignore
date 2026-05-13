@@ -27,4 +27,5 @@ out/
 .vscode/
 *.swp
 .DS_Store
-templates/
+# Parent-agent's draft Flask-style templates (kept locally as design reference).
+/templates/

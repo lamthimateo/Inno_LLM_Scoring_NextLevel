@@ -1,0 +1,55 @@
+{% extends "_base.html" %}
+{% block title %}Runs · Inno LLM Scoring{% endblock %}
+
+{% block content %}
+<header class="pageheader">
+  <div class="pageheader__title">
+    <h1>Runs</h1>
+    <p>Evaluations of locked question sets against one or more models.</p>
+  </div>
+  <div class="pageheader__actions">
+    <a class="btn btn--primary" href="/runs/new">+ New run</a>
+  </div>
+</header>
+
+{% if runs %}
+<div class="table-wrap card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Run ID</th>
+        <th>Set</th>
+        <th>Status</th>
+        <th>Progress</th>
+        <th class="num">Models</th>
+        <th class="num">Top score</th>
+        <th>Started by</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <td><a class="link link--strong mono" href="/runs/{{ r.run_id }}">{{ r.run_id }}</a></td>
+        <td class="mono">{{ r.set_id }}</td>
+        <td><span class="pill pill--{{ r.status or 'queued' }}">{{ (r.status or 'queued').replace('_', ' ') }}</span></td>
+        <td class="mono">{{ r.progress_done or 0 }} / {{ r.progress_total or 0 }}</td>
+        <td class="num">{{ r.model_runs or 0 }}</td>
+        <td class="num">{{ r.top_score or 0 }}</td>
+        <td>{{ r.started_by_username or '—' }}</td>
+        <td class="muted small">{{ r.created_at | string | replace('+00:00', '') | replace('T', ' ') | truncate(19, True, '') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty card">
+  <h2 class="empty__title">No runs yet</h2>
+  <p class="empty__body">
+    Lock a question set, then start a run to evaluate it against four models.
+  </p>
+  <a class="btn btn--primary" href="/runs/new">+ New run</a>
+</div>
+{% endif %}
+{% endblock %}
