@@ -1,209 +1,231 @@
 # Inno LLM Scoring — Next Level
 
-A **mini LM-Arena-style benchmark runner** with a review workflow, provider
-adapters, SQLite storage, and a static leaderboard.
+A **web-first LM-Arena-style benchmark runner** with a two-person review
+workflow, multi-provider model adapters, PostgreSQL storage, and live runs
+against four LLMs in a single click.
 
-- Strict MCQ format (`QID: LETTER`) so scoring is deterministic.
-- Two-person sign-off on question sets (`draft → in_review → approved → locked`).
-- Two execution modes: **paste-from-UI** (any model) or **API** (OpenAI today).
-- All results live in `db/benchmark.db` and can be exported to CSV + a
-  self-contained HTML leaderboard.
-
-For the deep dive (modules, data flow, schema), see
-[`ARCHITECTURE.md`](ARCHITECTURE.md).
+- Login-only web UI (FastAPI + Jinja2 + HTMX). The CLI is gone.
+- Two-tab interface: **Questions** (author / review / lock) and
+  **Results** (start runs, watch progress, view leaderboard).
+- Two-person sign-off on every question set:
+  `draft → in_review → approved → locked`. The approver can **never** be
+  the author — enforced at the service layer with an audit log.
+- Strict MCQ output format (`QID: LETTER`) so scoring is deterministic.
+- Four-model evaluation by default via **OpenRouter** (OpenAI, Anthropic,
+  Google, Meta — one API key, four providers).
+- Reproducibility: only locked sets can be evaluated. Every run keeps
+  the raw model output, parsed answers, per-category scores, and
+  provider metadata in Postgres.
 
 ---
 
-## Project structure
+## Quick start (Docker)
+
+The shortest path from `git clone` to a working UI:
+
+```bash
+cp .env.example .env
+# Edit .env: at minimum set SESSION_SECRET. Add OPENROUTER_API_KEY if you
+# want to run real evaluations against models (without it the UI still
+# works — you can import questions, review them, etc., and stub out runs
+# via the unit tests).
+
+docker compose up --build
+```
+
+That brings up four containers:
+
+| Service     | Port  | Purpose                                                       |
+| ----------- | ----- | ------------------------------------------------------------- |
+| `postgres`  | 5432  | Application database.                                         |
+| `redis`     | 6379  | Reserved for background-job persistence (RQ).                 |
+| `app`       | 8000  | FastAPI app + uvicorn (auto-reload in dev).                   |
+| `worker`    | —     | RQ worker (optional; runs the evaluation jobs).               |
+
+Open <http://localhost:8000>. You'll see the login screen.
+
+### Default accounts
+
+The `app` container runs `python -m src.web.seed` on first boot. By default
+it creates three accounts so the two-person review can be demonstrated:
+
+| Username    | Password       | Role     |
+| ----------- | -------------- | -------- |
+| `admin`     | `inno-admin`   | admin    |
+| `mateo`     | `mateo1234`    | author   |
+| `nikoleta`  | `nikoleta1234` | reviewer |
+
+> Override the admin password with `SEED_ADMIN_PASSWORD=...` in `.env`.
+> Set `SEED_DEMO_USERS=0` to skip the two demo accounts.
+
+### Demo walk-through
+
+1. Log in as **mateo** (author).
+2. Go to **Questions → + Import new set**. Drop any `.txt` from
+   `imports/answer_key/` and pick a `set_id` (e.g. `benchmark_v1`).
+3. On the set detail page click **Submit for review** and pass the
+   reviewer's user id (you can grab it from `docker compose exec
+   postgres psql -U benchmark -c 'select id, username from users;'`).
+4. Log out and log back in as **nikoleta** (reviewer). Open the set,
+   click **Approve**, then **Lock**.
+5. Switch to the **Results** tab and click **+ New run**. Pick the
+   locked set; the four default models are pre-filled. Click **Start
+   run**. The page polls the run status every 2 seconds and the
+   leaderboard fills in as each model returns.
+
+---
+
+## What's inside
 
 ```
 .
-├── ARCHITECTURE.md          # full module + DB walkthrough
-├── CHANGELOG.md             # human-written change notes
-├── README.md
-├── pyproject.toml           # package metadata + console script
-├── requirements.txt         # pinned runtime deps
-│
-├── imports/
-│   ├── answer_key/          # source benchmark .txt (with "Correct answer: X")
-│   ├── blind_test/          # same questions WITHOUT answers (paste into models)
-│   └── model_outputs/       # collected model replies (one .txt per model)
-│
-├── docs/
-│   └── tasks/               # per-person sprint deliverable notes
-│
-├── scripts/
-│   ├── benchmark.py         # backwards-compat wrapper -> src.benchmark.cli:main
-│   └── benchmark_review.py  # static QA report over imports/answer_key/
-│
+├── alembic/                 Database migrations (autogenerate-capable)
+├── alembic.ini
+├── docker-compose.yml       postgres + redis + app + worker
+├── Dockerfile
+├── .env.example             every env var the app reads
+├── imports/                 sample input data (answer-key text files)
+├── pyproject.toml           deps (mirrored in requirements.txt)
+├── requirements.txt
+├── static/                  css, js, favicon — no build step
+│   ├── css/app.css          design tokens + components
+│   ├── img/favicon.svg
+│   └── js/                  htmx + a vanilla helper (theme/toast/modals)
 ├── src/
-│   ├── benchmark/           # CLI + import / prompt / pipeline / export
-│   ├── adapters/            # OpenAI (real), Anthropic + Google (stubs)
-│   ├── runner/              # file-based + API-based execution
-│   ├── evaluator/           # MCQ parser + scoring rules
-│   ├── storage/             # SQLite schema + migrations
-│   └── web/                 # FastAPI dashboard + static leaderboard renderer
-│
-└── tests/                   # unittest suite (parser, scoring, DB, adapter)
+│   ├── adapters/            model adapters
+│   │   ├── base.py          ModelAdapter / ModelResult
+│   │   ├── openai_adapter.py        OpenAI Responses API + retries
+│   │   ├── openrouter_adapter.py    OpenRouter Chat Completions
+│   │   ├── anthropic_adapter.py     stub
+│   │   ├── google_adapter.py        stub
+│   │   └── registry.py      'provider:model' → adapter
+│   ├── auth/                authentication
+│   │   ├── passwords.py     bcrypt via passlib
+│   │   ├── service.py       register / login / change / reset
+│   │   ├── dependencies.py  FastAPI deps (current_user, require_role)
+│   │   └── router.py        /auth/* HTTP routes
+│   ├── benchmark/           domain logic
+│   │   ├── importing.py     parse .txt files + persist Questions
+│   │   ├── workflow.py      review state transitions + question edits
+│   │   ├── queries.py       read-side query helpers
+│   │   ├── prompting.py     build the strict MCQ prompt
+│   │   ├── pipeline.py      store_model_run + store_answers_and_aggregates
+│   │   ├── runs.py          create_run + execute_run + run_in_background
+│   │   └── exporting.py     export to CSV + static leaderboard assets
+│   ├── evaluator/           parsing + scoring
+│   ├── runner/              file vs. API entry points (kept for tests)
+│   ├── storage/
+│   │   ├── models.py        full SQLAlchemy schema
+│   │   └── db.py            engine + sessionmaker
+│   └── web/                 HTTP layer
+│       ├── app.py           FastAPI entrypoint + middleware wiring
+│       ├── templating.py    shared Jinja2 + render()
+│       ├── seed.py          idempotent user seed (env-driven)
+│       ├── leaderboard.py   static HTML/JSON leaderboard writer
+│       ├── routes/
+│       │   ├── questions.py /questions/* (list, import, detail, edit, workflow)
+│       │   └── runs.py      /runs/* (list, new, detail, status fragment)
+│       └── templates/       Jinja2 (extends _base.html)
+└── tests/                   pytest — 50 tests, sqlite in-memory
 ```
 
-`db/` and `results/` are created on demand and are **gitignored** — they hold
-generated artifacts only.
+### Database schema
+
+| Table                  | Rows                                                                |
+| ---------------------- | ------------------------------------------------------------------- |
+| `users`                | authn, role (admin/author/reviewer)                                 |
+| `audit_log`            | every state-changing action                                         |
+| `question_sets`        | set + status + author_id + reviewer_id                              |
+| `questions`            | current version of each question                                    |
+| `question_versions`    | historical snapshots (diff view)                                    |
+| `runs`                 | one evaluation against a locked set                                 |
+| `model_runs`           | raw output + provider meta per (run, model)                         |
+| `answers`              | parsed per-question score                                           |
+| `aggregates`           | per-model totals + per-category sub-scores                          |
+| `jobs`                 | background-job persistence (status + progress + error)              |
+| `password_reset_tokens`| single-use tokens (TTL 1h; link logged to server log)               |
+
+Migrations live in `alembic/versions/`. The initial revision uses
+`Base.metadata.create_all` (cheap on a greenfield schema). Future schema
+changes should be auto-generated with
+`alembic revision --autogenerate -m "..."` so they produce explicit
+`op.create_table` / `op.alter_column` operations.
 
 ---
 
-## Question categories
+## Local development (without Docker)
 
-Each QID prefix maps to one of six categories. The scoring pipeline aggregates
-per category and exposes it in the leaderboard.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+export DATABASE_URL="sqlite:///./db/benchmark.db"
+export SESSION_SECRET="dev-secret"
+mkdir -p db
+alembic upgrade head
+python -m src.web.seed
+uvicorn src.web.app:app --reload
+```
 
-| Prefix | Category        | What it stresses                            |
-|:------:|-----------------|---------------------------------------------|
-| `C`    | `chemistry`     | factual recall                              |
-| `E`    | `emotions`      | social / affective reasoning                |
-| `M`    | `math`          | multi-step calculation                      |
-| `A`    | `reasoning3d`   | spatial / 3D reasoning                      |
-| `N`    | `no_knowledge`  | does the model admit when it doesn't know?  |
-| `X`    | `contradiction` | does the model push back on user input?     |
-
-Scoring rule per question:
-
-| Outcome  | Score |
-|----------|------:|
-| correct  | **+1** |
-| blank    |   0   |
-| wrong    | **-10** |
-
-The harsh penalty for wrong answers is intentional — it prevents random
-guessing from outperforming honest abstention on the `N` and `X` categories.
+The same code works on SQLite (development + tests) and PostgreSQL
+(Docker / production); the only switch is `DATABASE_URL`.
 
 ---
 
-## Adapter status
+## Running the tests
 
-| Provider     | Adapter                          | Wired? | Env var            |
-|--------------|----------------------------------|:------:|--------------------|
-| OpenAI       | `src/adapters/openai_adapter.py` | yes    | `OPENAI_API_KEY`   |
-| Anthropic    | `src/adapters/anthropic_adapter.py` | stub | `ANTHROPIC_API_KEY` |
-| Google       | `src/adapters/google_adapter.py` | stub   | `GOOGLE_API_KEY`   |
+```bash
+DATABASE_URL="sqlite:///:memory:" SESSION_SECRET=test pytest -q
+```
 
-For non-OpenAI providers, run them manually through their UI, paste each reply
-into `imports/model_outputs/<model_id>.txt`, then use `run-file`.
+What's covered:
+
+- **Parser + scoring** (3) — pure unit tests around the strict-format parser.
+- **OpenAI error paths** (2) — adapter retries + missing-key error.
+- **DB schema** (2) — every table from `create_all`, `meta_json` present.
+- **Pipeline / workflow** (5) — import → submit → approve → lock → run → aggregate.
+- **Auth service** (18) — register / login / change / reset / hash helpers.
+- **Auth routes** (7) — full HTTP flow via FastAPI TestClient.
+- **Questions routes** (6) — list, import, two-person review, 403 + 404.
+- **Runs orchestration** (5) — happy path, partial failure, total failure.
+- **End-to-end** (1) — login → import → review → lock → run → leaderboard,
+  all via HTTP, with a mocked adapter.
+
+51 tests, ~14 s on a laptop.
 
 ---
 
-## Setup
+## Environment variables
 
-Requires **Python 3.10+**.
-
-```bash
-python3 -m pip install -r requirements.txt
-python3 scripts/benchmark.py init-db
-```
-
----
-
-## Workflow
-
-### 1) Import questions + review
-
-```bash
-python3 scripts/benchmark.py import-questions \
-  --source imports/answer_key \
-  --set-id benchmark_v1 \
-  --author mateo
-
-python3 scripts/benchmark.py submit-review --set-id benchmark_v1 --reviewer nikoleta
-python3 scripts/benchmark.py approve       --set-id benchmark_v1 --reviewer nikoleta
-python3 scripts/benchmark.py lock          --set-id benchmark_v1
-```
-
-### 2) Build the prompt
-
-```bash
-python3 scripts/benchmark.py build-prompt --set-id benchmark_v1 --out results/prompt_to_models.txt
-```
-
-### 3a) Run via API (OpenAI)
-
-```bash
-export OPENAI_API_KEY="..."
-python3 scripts/benchmark.py run-openai \
-  --set-id benchmark_v1 \
-  --run-id run_openai_001 \
-  --models gpt-4.1,gpt-4.1-mini
-```
-
-### 3b) Run from saved model replies (any provider)
-
-Drop each model's reply as `imports/model_outputs/<model_id>.txt`, then:
-
-```bash
-python3 scripts/benchmark.py run-file \
-  --set-id benchmark_v1 \
-  --model-outputs imports/model_outputs \
-  --run-id run_001
-```
-
-### 4) Export results + leaderboard
-
-```bash
-python3 scripts/benchmark.py export --run-id run_001 --out results
-python3 scripts/benchmark.py serve  --dir results/leaderboard --port 8080
-# open http://localhost:8080
-```
-
-### 5) Web UI (optional)
-
-Run OpenAI jobs from a browser:
-
-```bash
-export OPENAI_API_KEY="..."
-python3 -m uvicorn src.web.app:app --reload --port 8000
-# open http://localhost:8000
-```
-
-### 6) Static QA report on the question set
-
-```bash
-python3 scripts/benchmark_review.py \
-  --in  imports/answer_key \
-  --out results/benchmark_review_report.md
-```
+| Var                       | Default                                        | Notes                                              |
+| ------------------------- | ---------------------------------------------- | -------------------------------------------------- |
+| `DATABASE_URL`            | `postgresql+psycopg://benchmark:…`             | Override to `sqlite:///./db/benchmark.db` for dev. |
+| `SESSION_SECRET`          | `dev-secret-change-me`                         | Signs session cookies. **Set in prod.**            |
+| `OPENAI_API_KEY`          | unset                                          | Required for `openai:*` model IDs.                 |
+| `OPENROUTER_API_KEY`      | unset                                          | Required for `openrouter:*` model IDs.             |
+| `OPENROUTER_HTTP_REFERER` | `https://github.com/inno-llm-scoring`          | Sent to OpenRouter for traffic routing.            |
+| `OPENROUTER_APP_TITLE`    | `Inno LLM Scoring`                             |                                                    |
+| `SEED_ADMIN_USERNAME`     | `admin`                                        |                                                    |
+| `SEED_ADMIN_PASSWORD`     | `inno-admin`                                   | Must be ≥ 8 chars. **Change in prod.**             |
+| `SEED_DEMO_USERS`         | `1`                                            | Set to `0` to skip the mateo/nikoleta accounts.    |
 
 ---
 
-## Model reply format (STRICT)
+## Adapters
 
-Each model must output **only**:
+| Provider              | Status         | Notes                                                                  |
+| --------------------- | -------------- | ---------------------------------------------------------------------- |
+| `openai:*`            | implemented    | Uses the Responses API. Reads `OPENAI_API_KEY`. Retries + backoff.     |
+| `openrouter:*`        | implemented    | Chat Completions. Reads `OPENROUTER_API_KEY` (falls back to `OPENAI_API_KEY` for dev). |
+| `anthropic:*`         | stub           | Wire the Anthropic SDK or use `openrouter:anthropic/...` instead.       |
+| `google:*`            | stub           | Wire the Google SDK or use `openrouter:google/...` instead.             |
 
-```
-C1: C
-C2:
-...
-X10: B
-```
-
-Blank after `:` means *no answer*. Anything else on that line counts as a
-**format violation** on the leaderboard.
-
----
-
-## Tests
-
-```bash
-python3 -m unittest discover -s tests -p "test_*.py"
-```
-
-Three suites:
-
-- `tests/test_parser_scoring.py` — MCQ parser + scoring edge cases
-- `tests/test_db_migrations.py`  — additive schema migration applies idempotently
-- `tests/test_openai_error_paths.py` — missing key produces a clear error
+The OpenRouter adapter is the recommended path for four-model
+benchmarks: a single API key gives you OpenAI, Anthropic, Google, Meta,
+Mistral, and dozens more under one billing relationship.
 
 ---
 
-## Per-person task notes
+## License
 
-Sprint deliverables and implementation notes per teammate live in
-[`docs/tasks/`](docs/tasks/). Update them when finishing a sprint item.
+Coursework — FH Technikum Wien, Innovation 2, SS2026.

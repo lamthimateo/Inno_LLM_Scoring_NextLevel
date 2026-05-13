@@ -47,7 +47,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
-      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-inno-admin}
+      SEED_DEMO_USERS: ${SEED_DEMO_USERS:-1}
     ports:
       - "8000:8000"
     command: >
@@ -56,6 +57,7 @@ services:
              uvicorn src.web.app:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
       - ./src:/app/src
+      - ./static:/app/static
       - ./imports:/app/imports
       - ./alembic:/app/alembic
       - ./alembic.ini:/app/alembic.ini

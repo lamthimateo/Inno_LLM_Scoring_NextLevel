@@ -30,7 +30,7 @@ from src.adapters.registry import get_adapter
 from src.benchmark.importing import load_answer_key
 from src.benchmark.pipeline import store_answers_and_aggregates, store_model_run
 from src.benchmark.prompting import build_prompt_text
-from src.storage.db import SessionLocal
+from src.storage import db as _db
 from src.storage.models import (
     AuditLog,
     Job,
@@ -206,7 +206,9 @@ def run_in_background(run_id: str) -> threading.Thread:
     """
 
     def _target():
-        session = SessionLocal()
+        # Resolve SessionLocal lazily so tests that swap the engine
+        # (via :func:`src.storage.db.reset_engine`) get the right one.
+        session = _db.SessionLocal()
         try:
             execute_run(session, run_id)
         except Exception:
