@@ -274,3 +274,177 @@ def test_cancel_route_404_for_unknown_run(client_with_users):
     _login(client_with_users, "mateo")
     r = client_with_users.post("/runs/does_not_exist/cancel", follow_redirects=False)
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /runs/new + POST /runs/new — curated-catalog model picker
+# ---------------------------------------------------------------------------
+#
+# These tests pin the UX cleanup from "feat(runs): catalog-backed model
+# dropdown with provider grouping". The new form:
+#   - renders a <select multiple name="models"> with one <optgroup> per
+#     provider group
+#   - validates submitted ids against ``MODEL_CATALOG``
+#   - rejects ids whose ``requires_env`` is missing (e.g. openrouter ids
+#     when ``OPENROUTER_API_KEY`` is unset)
+#   - falls back to ``default_catalog_ids`` when the user submits nothing
+
+
+def _login_mateo(client: TestClient) -> None:
+    _login(client, "mateo")
+
+
+@pytest.fixture
+def no_openrouter_key(monkeypatch):
+    """Force the catalog into "OpenAI-direct only" mode for the duration of
+    a test by clearing ``OPENROUTER_API_KEY`` and rebuilding ``MODEL_CATALOG``
+    so ``is_default`` flips back to the OpenAI preset."""
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    import importlib
+
+    from src.adapters import registry as reg
+
+    importlib.reload(reg)
+    # The route module imported these symbols at module load time, so
+    # rebinding them on the route module is what actually changes route
+    # behavior for the test.
+    from src.web.routes import runs as runs_route
+
+    runs_route.MODEL_CATALOG = reg.MODEL_CATALOG
+    runs_route.DEFAULT_MODELS = reg.DEFAULT_MODELS
+    runs_route.catalog_by_id = reg.catalog_by_id
+    runs_route.catalog_grouped = reg.catalog_grouped
+    runs_route.default_catalog_ids = reg.default_catalog_ids
+    runs_route.group_is_available = reg.group_is_available
+    yield
+    importlib.reload(reg)
+    runs_route.MODEL_CATALOG = reg.MODEL_CATALOG
+    runs_route.DEFAULT_MODELS = reg.DEFAULT_MODELS
+    runs_route.catalog_by_id = reg.catalog_by_id
+    runs_route.catalog_grouped = reg.catalog_grouped
+    runs_route.default_catalog_ids = reg.default_catalog_ids
+    runs_route.group_is_available = reg.group_is_available
+
+
+def test_new_run_form_renders_catalog_grouped_by_provider(client_with_users):
+    """GET /runs/new must render the curated catalog as a <select multiple>
+    with both provider <optgroup>s and the expected option ids."""
+
+    _import_and_lock_set(client_with_users, set_id="bench")
+    _logout(client_with_users)
+    _login_mateo(client_with_users)
+
+    r = client_with_users.get("/runs/new")
+    assert r.status_code == 200
+    body = r.text
+
+    # Native multi-select replaces the old textarea / per-model switches.
+    assert 'name="models"' in body
+    assert "multiple" in body
+    assert 'name="model_ids_csv"' not in body, (
+        "old free-form textarea should be gone now that the picker is catalog-backed"
+    )
+
+    # Both provider groups render as <optgroup>s.
+    assert 'label="OpenAI direct"' in body
+    assert "OpenRouter cross-provider" in body  # label may have a suffix when disabled
+
+    # Sample of expected option ids — one per provider group.
+    assert 'value="openai:gpt-5.5"' in body
+    assert 'value="openrouter:anthropic/claude-sonnet-4.5"' in body
+
+
+def test_new_run_rejects_unknown_model_id(client_with_users):
+    """POST /runs/new with a bogus model id must re-render the form with a
+    flash error (400) instead of trying to launch the run."""
+
+    _import_and_lock_set(client_with_users, set_id="bench")
+    _logout(client_with_users)
+    _login_mateo(client_with_users)
+
+    r = client_with_users.post(
+        "/runs/new",
+        data={"set_id": "bench", "models": ["openai:bogus"], "notes": ""},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400, r.text
+    # The form re-renders with the error visible to the user.
+    assert "Unknown model id" in r.text
+    assert "openai:bogus" in r.text
+
+
+def test_new_run_rejects_openrouter_when_no_key_set(
+    client_with_users, no_openrouter_key
+):
+    """Submitting an OpenRouter model id must be rejected when
+    ``OPENROUTER_API_KEY`` is not configured — runs would just fail at the
+    first model call otherwise, with a much less helpful error."""
+
+    _import_and_lock_set(client_with_users, set_id="bench")
+    _logout(client_with_users)
+    _login_mateo(client_with_users)
+
+    r = client_with_users.post(
+        "/runs/new",
+        data={
+            "set_id": "bench",
+            "models": ["openrouter:anthropic/claude-sonnet-4.5"],
+            "notes": "",
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code == 400, r.text
+    assert "OPENROUTER_API_KEY" in r.text
+
+
+def test_new_run_falls_back_to_defaults_when_models_empty(
+    client_with_users, no_openrouter_key, monkeypatch
+):
+    """If the user submits the form with no models selected, the route must
+    fall back to the default preset rather than 400'ing on an empty list."""
+
+    _import_and_lock_set(client_with_users, set_id="bench")
+    _logout(client_with_users)
+    _login_mateo(client_with_users)
+
+    # Stub out the background orchestrator: it would otherwise try to call
+    # the real OpenAI API on the (in-memory) default preset.
+    from src.web.routes import runs as runs_route
+
+    captured: dict = {}
+
+    def _fake_bg(run_id: str):
+        captured["run_id"] = run_id
+
+        class _T:
+            pass
+
+        return _T()
+
+    monkeypatch.setattr(runs_route, "run_in_background", _fake_bg)
+
+    r = client_with_users.post(
+        "/runs/new",
+        data={"set_id": "bench", "notes": ""},
+        follow_redirects=False,
+    )
+    # No ``models`` field at all -> defaults preset -> 303 to the run page.
+    assert r.status_code == 303, r.text
+    assert r.headers["location"].startswith("/runs/run_")
+
+    # And the job's payload was seeded with the default OpenAI preset (no
+    # OpenRouter key in this test) — exactly the 4-model preset.
+    s = db_module.SessionLocal()
+    try:
+        run_id = r.headers["location"].rsplit("/", 1)[-1]
+        job = s.get(Job, run_id)
+        assert job is not None
+        assert job.payload_json["model_ids"] == [
+            "openai:gpt-5.5",
+            "openai:gpt-5.4-mini",
+            "openai:gpt-5-mini",
+            "openai:o4-mini",
+        ]
+    finally:
+        s.close()
