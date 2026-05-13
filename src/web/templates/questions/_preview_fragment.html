@@ -21,6 +21,10 @@
   <div class="preview-errors mb-3">
     {% for msg in file_errors %}
       <div class="alert alert-error">
+        <svg class="alert-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M10 6v5M10 14v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
         <div class="alert-body">
           <div class="alert-title">Could not parse file</div>
           <div>{{ msg }}</div>
@@ -56,11 +60,26 @@
     {% endfor %}
   </div>
 
-  {# Validation block: one alert per finding (errors first, then warnings) #}
+  {# Validation block: one alert per finding (errors first, then warnings).
+     The `.alert` style is a 3-column grid (icon | body | close): rendering
+     only `.alert-body` collapses it into the 20px icon column and breaks
+     every word onto its own line. Always emit an icon to keep the body in
+     the 1fr column. #}
   <div class="preview-validation mb-3">
     {% for f in validation.findings %}
       {% set cls = 'alert-error' if f.level == 'fail' else ('alert-warn' if f.level == 'warn' else 'alert-success') %}
       <div class="alert {{ cls }}">
+        <svg class="alert-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          {% if f.level == 'fail' %}
+            <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M10 6v5M10 14v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          {% elif f.level == 'warn' %}
+            <path d="M10 3l8 14H2l8-14z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M10 9v3M10 15v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          {% else %}
+            <path d="M5 10l3.5 3.5L15 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          {% endif %}
+        </svg>
         <div class="alert-body">
           <div class="alert-title">{{ f.title }}</div>
           {% if f.detail %}<div>{{ f.detail }}</div>{% endif %}
