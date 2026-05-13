@@ -1,180 +1,209 @@
 # Architecture
 
-This document describes the current architecture of **LLM Arena**: modules, data flow, and the SQLite persistence model.
+This document describes the architecture of **LLM Arena**: modules, runtime
+topology, data flow, and the relational schema.
+
+The system was rewritten from a CLI-only tool into a web app in v0.2.0; this
+document reflects the current GUI-based, Postgres-backed system. The
+historical CLI design lives in `docs/archive/tasks/` for reference.
 
 ---
 
 ## High-level overview
 
-The system is a lightweight, reproducible benchmark runner with a strict MCQ answer format and an exportable leaderboard.
+LLM Arena is a reproducible MCQ benchmark runner with a two-person review
+workflow, a multi-provider adapter layer, and a static leaderboard export.
 
-- **Source data**: benchmark question sets are imported from text files under `imports/answer_key/`.
-- **Review workflow**: sets move through `draft → in_review → approved → locked`.
-- **Execution**:
-  - **File runner**: parse saved model outputs from `imports/model_outputs/*.txt`
-  - **API runner**: call an LLM provider (currently OpenAI) and capture raw responses
-- **Scoring**: parse answers, score per question, aggregate per category + totals.
-- **Persistence**: store raw outputs, parsed answers, and aggregates in SQLite (`db/benchmark.db`).
-- **Export/UI**: export CSV + static `index.html` leaderboard driven by `leaderboard.json`.
+- **Authoring**: users upload `.txt` answer-key files; the importer parses
+  them into versioned `QuestionSet` + `Question` rows.
+- **Review workflow**: sets move `draft → in_review → approved → locked`.
+  The approver cannot be the author (enforced at the service layer).
+- **Execution**: locked sets can be evaluated against any registered model
+  via the adapter registry. Runs execute against four models in parallel
+  by default via OpenRouter.
+- **Scoring**: a strict `QID: LETTER` parser extracts answers and the
+  evaluator scores them (+1 correct / 0 blank / -10 wrong) and aggregates
+  by category.
+- **Persistence**: every run keeps the raw model output, parsed answers,
+  per-category scores, and provider metadata in Postgres (SQLite for
+  tests and local development).
+- **Export / UI**: results render in the live web UI and can also be
+  exported to a static HTML + JSON leaderboard.
+
+---
+
+## Runtime topology
+
+`docker compose up` brings up four services:
+
+| Service     | Image                | Purpose                                                    |
+| ----------- | -------------------- | ---------------------------------------------------------- |
+| `postgres`  | `postgres:16-alpine` | Application database.                                      |
+| `redis`     | `redis:7-alpine`     | Job queue backing store (RQ).                              |
+| `app`       | built from Dockerfile | FastAPI + uvicorn, runs migrations + seeds users at boot.  |
+| `worker`    | built from Dockerfile | RQ worker for background run execution.                    |
+
+Static assets (CSS, JS, logo) are served from `/static` (repo-root
+`static/`). Templates live in `src/web/templates/` and are rendered via
+Jinja2 + HTMX for partial updates.
 
 ---
 
 ## Module layout
 
-### CLI / orchestration
-- `scripts/benchmark.py`
-  - Backwards-compatible wrapper that forwards to `src/benchmark/cli.py`.
-- `src/benchmark/cli.py`
-  - CLI command wiring (`init-db`, `import-questions`, `submit-review`, `approve`, `lock`, `build-prompt`, `run-file`, `run-openai`, `export`, `serve`)
-  - Calls into the focused modules below.
+### `src/web/` — HTTP layer
+- `app.py` — FastAPI entrypoint, session middleware, static mount,
+  router wiring.
+- `templating.py` — shared Jinja2 environment, `render()` helper,
+  Flask-style `url_for()` shim for the design-system templates.
+- `seed.py` — idempotent user seeder (env-driven; runs on first boot).
+- `leaderboard.py` — writes a static `index.html` + `leaderboard.json`
+  pair from a list of leaderboard rows.
+- `routes/questions.py` — `/questions/*` (list, import preview, detail,
+  edit, workflow transitions).
+- `routes/runs.py` — `/runs/*` (list, new-run modal, status fragment,
+  leaderboard, cancel).
 
-### Benchmark pipeline utilities
-- `src/benchmark/importing.py`
-  - Parses question text files and imports `question_sets` + `questions` into SQLite.
-- `src/benchmark/prompting.py`
-  - Builds the strict “QID: LETTER” prompt from DB.
-- `src/benchmark/pipeline.py`
-  - Shared persistence helpers:
-    - `store_model_run(...)` writes raw output + provider metadata
-    - `store_answers_and_aggregates(...)` parses + scores + persists per-question + aggregates
-- `src/benchmark/exporting.py`
-  - Exports CSV and writes leaderboard assets (JSON + HTML).
+### `src/auth/` — authentication
+- `passwords.py` — bcrypt hashing via passlib.
+- `service.py` — register / login / change / reset, with audit logging.
+- `dependencies.py` — FastAPI deps (`get_current_user`, `require_role`).
+- `router.py` — `/auth/*` routes (login / logout / signup / forgot /
+  reset / change-password).
 
-### Runners (execution)
-- `src/runner/file_runner.py`
-  - Loads saved outputs from `imports/model_outputs/*.txt` into `{model_id: raw_text}`.
-- `src/runner/api_runner.py`
-  - Executes API calls (currently OpenAI) and returns `ModelResult` objects.
+### `src/benchmark/` — domain logic
+- `importing.py` — parse `*.txt` answer-key files into `ParsedQuestion`s
+  and persist them as `Question` rows under a `QuestionSet`.
+- `validation.py` — static-content checks (duplicate QIDs, missing
+  choices, missing answers, short choices) used by the import preview
+  and by `scripts/benchmark_review.py`.
+- `workflow.py` — two-person review state transitions + question edit
+  versioning.
+- `queries.py` — read-side query helpers used by routes.
+- `prompting.py` — build the strict `QID: LETTER` prompt from DB rows.
+- `pipeline.py` — `store_model_run()` and
+  `store_answers_and_aggregates()` (parse + score + persist).
+- `runs.py` — `create_run()` / `execute_run()` orchestration with
+  cancellation support; background-job entrypoint for the RQ worker.
+- `exporting.py` — query `aggregates ⋈ model_runs` and (optionally)
+  write the static leaderboard.
 
-### Adapters (providers)
-- `src/adapters/base.py`
-  - Defines:
-    - `ModelAdapter` interface (`id()`, `run(prompt, ...)`)
-    - `ModelResult` dataclass (`model_id`, `raw_text`, `meta`)
-- `src/adapters/openai_adapter.py`
-  - Real provider integration (Responses API), retry/backoff, and robust output extraction.
-- `src/adapters/anthropic_adapter.py`, `src/adapters/google_adapter.py`
-  - Stubs (not wired yet).
+### `src/adapters/` — model providers
+- `base.py` — `ModelAdapter` interface and `ModelResult` dataclass
+  (`model_id`, `raw_text`, `meta`).
+- `openai_adapter.py` — OpenAI Responses API with retries / backoff.
+- `openrouter_adapter.py` — OpenRouter Chat Completions (single key,
+  many providers).
+- `anthropic_adapter.py`, `google_adapter.py` — stubs; route Claude /
+  Gemini traffic through OpenRouter for now.
+- `registry.py` — `provider:model` → adapter lookup + the curated
+  catalog used by the new-run model picker.
 
-### Evaluator (parsing + scoring)
-- `src/evaluator/parser_mcq.py`
-  - Extracts `QID: LETTER` pairs from raw model output and counts format violations.
-- `src/evaluator/scoring.py`
-  - Applies scoring rules:
-    - correct = +1
-    - blank = 0
-    - wrong = -10
-  - Aggregates by category derived from QID prefix (`C/E/M/A/N/X`).
+### `src/evaluator/` — parsing + scoring
+- `parser_mcq.py` — extracts `QID: LETTER` pairs from raw model output
+  and counts format violations.
+- `scoring.py` — applies the scoring rules and aggregates by category
+  derived from the QID prefix (`C/E/M/A/N/X`).
 
-### Storage (SQLite)
-- `src/storage/schema.py`
-  - `SCHEMA_SQL` used to create tables.
-- `src/storage/db.py`
-  - `connect()` with foreign keys enabled
-  - idempotent init + lightweight migrations (e.g. adding `meta_json` to `model_runs`)
+### `src/storage/` — persistence
+- `models.py` — full SQLAlchemy ORM schema (Postgres / SQLite portable).
+- `db.py` — engine + sessionmaker; SQLite-specific `PRAGMA foreign_keys`
+  and `StaticPool` handling so tests can run on `sqlite:///:memory:`.
 
-### Web export
-- `src/web/leaderboard.py`
-  - Writes `leaderboard.json` + static `index.html` to `results/leaderboard/`.
+### `alembic/` — migrations
+- `env.py` + `versions/0001_initial_schema.py` — initial schema using
+  `Base.metadata.create_all` (greenfield). Future schema changes should
+  be autogenerated with `alembic revision --autogenerate`.
+
+### `scripts/`
+- `benchmark_review.py` — offline batch QA report. Runs the same
+  checks as `src/benchmark/validation.py` but emits a markdown summary
+  for `imports/answer_key/*.txt`. Useful for CI gates.
+
+### `tests/`
+- pytest, SQLite in-memory. Covers parser/scoring, adapter retries,
+  schema, pipeline, auth, every HTML route, and one full end-to-end
+  flow via FastAPI's `TestClient`.
 
 ---
 
-## SQLite schema (conceptual)
+## Database schema
 
-The DB is designed to preserve *traceability* from a run → raw output → parsed answers → scores.
+All tables live in Postgres in production and SQLite in tests/dev. The
+schema is defined as SQLAlchemy ORM classes in `src/storage/models.py`
+and managed via Alembic.
 
-### `question_sets`
-Represents a benchmark set with workflow status.
+| Table                   | Rows                                                        |
+| ----------------------- | ----------------------------------------------------------- |
+| `users`                 | authn (bcrypt hash), role (`admin / author / reviewer`).    |
+| `audit_log`             | every state-changing action (who, when, what).              |
+| `question_sets`         | set + status + `author_id` + `reviewer_id`.                 |
+| `questions`             | current version of each question.                           |
+| `question_versions`     | historical snapshots used by the diff view.                 |
+| `runs`                  | one evaluation against a locked set.                        |
+| `model_runs`            | raw output + provider meta per `(run, model)`.              |
+| `answers`               | parsed per-question score.                                  |
+| `aggregates`            | per-model totals + per-category sub-scores.                 |
+| `jobs`                  | background-job persistence (status, progress, error).       |
+| `password_reset_tokens` | single-use tokens, TTL 1h.                                  |
 
-- `set_id` (PK)
-- `status`: `draft | in_review | approved | locked`
-- `author`, `reviewer`
-- `created_at`, `updated_at`
-
-### `questions`
-All questions belonging to a set.
-
-- `(qid, set_id)` (composite PK)
-- `category` (string)
-- `prompt` (text)
-- `choices_json` (JSON string)
-- `correct_answer` (A–E)
-- `scoring_rule` (currently `mcq_v1`)
-
-### `runs`
-One evaluation run against a given set.
-
-- `run_id` (PK)
-- `set_id` (FK)
-- `prompt_policy` (string, e.g. `strict_format_v1`)
-- `notes`
-- `created_at`
-
-### `model_runs`
-Raw model output captured for each model in a run.
-
-- `model_run_id` (PK)
-- `run_id` (FK)
-- `model_id` (e.g. file name, or `openai:<model>`)
-- `source`: `file | api`
-- `raw_text`: raw output text from the model
-- `meta_json`: JSON metadata (usage, latency, response id, errors)
-- `created_at`
-- unique constraint: `(run_id, model_id)`
-
-### `answers`
-Per-question persisted scoring for a model run.
-
-- `(model_run_id, qid)` (composite PK)
-- `given_answer`, `correct_answer`
-- `score`
-
-### `aggregates`
-Per-model-run aggregates used for leaderboard.
-
-- `model_run_id` (PK/FK)
-- category totals: `chemistry`, `emotions`, `math`, `reasoning3d`, `no_knowledge`, `contradiction`
-- `total_score`
-- counts: `correct_count`, `wrong_count`, `blank_count`
-- `format_violations`
+Two-person review is enforced by FK + service-layer checks: the
+`reviewer_id` is required for `approve` / `lock` and must differ from
+`author_id`. Every transition is recorded in `audit_log`.
 
 ---
 
 ## End-to-end data flow
 
 ### A) Import + review workflow
-1. `import-questions` reads text files from `imports/answer_key/`
-2. Writes to `question_sets` (status `draft`) and `questions`
-3. `submit-review` → status `in_review`
-4. `approve` → status `approved`
-5. `lock` → status `locked` (freezes the set for reproducibility)
+1. Author opens **Questions → + Import new set**, picks one or more
+   `.txt` files, and hits **Preview**.
+2. `POST /questions/preview` parses the files and runs
+   `validate_questions()` (see `src/benchmark/validation.py`), rendering
+   an HTMX fragment with categories, duplicates, missing choices, etc.
+3. **Save** writes `QuestionSet` (status `draft`) and `Question` rows.
+4. Author clicks **Submit for review** → status `in_review`.
+5. A different user (reviewer) clicks **Approve** → `approved`, then
+   **Lock** → `locked`. Locked sets are immutable.
 
-### B) Prompt generation
-1. `build-prompt` reads questions from SQLite
-2. Emits a prompt with strict output rules and an answer template
+### B) Run execution
+1. User picks a locked set on **Runs → + New run** and selects one or
+   more models from the curated catalog.
+2. `POST /runs` creates a `runs` row (status `queued`) and enqueues the
+   RQ job that calls `src.benchmark.runs.execute_run`.
+3. The orchestrator loops over `(run_id, model_id)` pairs:
+   - Looks up the adapter via `src/adapters/registry.py`.
+   - Calls `adapter.run(prompt, ...)`, capturing the raw response and
+     provider metadata.
+   - Persists the result via `store_model_run()` →
+     `store_answers_and_aggregates()`.
+4. The detail page polls `/runs/{id}/status` (HTMX) every 2 s and the
+   leaderboard fills in as each model returns.
 
-### C) Run execution (two options)
+### C) Scoring
+1. `parse_model_output` extracts `QID: LETTER` pairs from the raw model
+   output and counts format violations.
+2. `score_answers` applies +1 / 0 / −10 and aggregates by category from
+   the QID prefix (`C/E/M/A/N/X`).
+3. Persisted into `answers` (per-question) and `aggregates`
+   (per-model-run totals).
 
-**Option 1: File runner**
-1. Collect model outputs manually into `imports/model_outputs/*.txt`
-2. `run-file` loads these files and stores them into `model_runs`
-
-**Option 2: API runner (OpenAI)**
-1. `run-openai` calls OpenAI via `OpenAIAdapter` (Responses API)
-2. Stores raw output into `model_runs.raw_text` and metadata into `model_runs.meta_json`
-
-### D) Parsing + scoring + persistence
-1. `parse_model_output` extracts `QID: LETTER` pairs and counts format violations
-2. `score_answers` scores each question and aggregates by category
-3. Persist into:
-   - `answers` (per-question)
-   - `aggregates` (per-model-run totals)
-
-### E) Export + leaderboard
-1. `export` queries `aggregates` joined with `model_runs`
-2. Writes:
+### D) Export
+1. `fetch_leaderboard_rows(session, run_id)` joins `aggregates` with
+   `model_runs` and returns a list of dicts.
+2. The web leaderboard renders these rows in-page.
+3. For an offline snapshot, `export_results(...)` writes:
    - `results/benchmark_results.csv`
    - `results/leaderboard/leaderboard.json`
-   - `results/leaderboard/index.html`
-3. `serve` can serve the leaderboard directory locally.
+   - `results/leaderboard/index.html` (sortable, comparable, no build)
 
+`results/` is gitignored — exports are generated, not source-controlled.
+
+---
+
+## Test surface
+
+`DATABASE_URL=sqlite:///:memory: SESSION_SECRET=test pytest -q`
+
+The suite is fully self-contained: every test resets the schema, no
+external services are required, and adapter calls are patched out.
