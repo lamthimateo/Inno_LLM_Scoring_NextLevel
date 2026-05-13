@@ -1,0 +1,31 @@
+{% extends "_base.html" %}
+{% block title %}Edit {{ qs.title or qs.set_id }} · Questions{% endblock %}
+
+{% block content %}
+<header class="pageheader">
+  <div class="pageheader__title">
+    <h1>Edit set metadata</h1>
+    <p class="mono muted">{{ qs.set_id }}</p>
+  </div>
+  <div class="pageheader__actions">
+    <a class="btn btn--ghost" href="/questions/{{ qs.set_id }}">← Back to detail</a>
+  </div>
+</header>
+
+{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+
+<form method="post" action="/questions/{{ qs.set_id }}/edit" class="card form form--wide">
+  <div class="form__row">
+    <span class="form__label">Title</span>
+    <input class="form__input" name="title" value="{{ qs.title or '' }}" />
+  </div>
+  <div class="form__row">
+    <span class="form__label">Description</span>
+    <textarea class="form__textarea" name="description">{{ qs.description or '' }}</textarea>
+  </div>
+  <div class="form__actions">
+    <a class="btn btn--ghost" href="/questions/{{ qs.set_id }}">Cancel</a>
+    <button class="btn btn--primary" type="submit">Save</button>
+  </div>
+</form>
+{% endblock %}

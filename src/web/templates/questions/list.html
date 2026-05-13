@@ -1,0 +1,86 @@
+{% extends "_base.html" %}
+{% block title %}Questions · Inno LLM Scoring{% endblock %}
+
+{% block content %}
+<header class="pageheader">
+  <div class="pageheader__title">
+    <h1>Question sets</h1>
+    <p>Author, review, and lock benchmark sets used by every run.</p>
+  </div>
+  <div class="pageheader__actions">
+    <a class="btn btn--primary" href="/questions/import">+ Import new set</a>
+  </div>
+</header>
+
+<form method="get" action="/questions" class="toolbar">
+  <input class="form__input toolbar__search"
+         type="search" name="q"
+         value="{{ filter_search }}"
+         placeholder="Search by title, set_id, or description…" />
+
+  <div class="chips" role="tablist">
+    {% set status_filters = [
+        ('', 'All', counts.get('total', 0)),
+        ('draft', 'Draft', counts.get('draft', 0)),
+        ('in_review', 'In review', counts.get('in_review', 0)),
+        ('approved', 'Approved', counts.get('approved', 0)),
+        ('locked', 'Locked', counts.get('locked', 0)),
+    ] %}
+    {% for value, label, count in status_filters %}
+      {% set active = filter_status == value %}
+      <a class="chip {% if active %}chip--active{% endif %}"
+         href="/questions?status={{ value }}{% if filter_search %}&q={{ filter_search }}{% endif %}">
+        {{ label }}<span class="chip__count">{{ count }}</span>
+      </a>
+    {% endfor %}
+  </div>
+
+  <noscript><button class="btn" type="submit">Apply</button></noscript>
+</form>
+
+{% if sets %}
+<div class="table-wrap card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Status</th>
+        <th>Author</th>
+        <th>Reviewer</th>
+        <th class="num">Questions</th>
+        <th>Updated</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in sets %}
+      <tr>
+        <td>
+          <a class="link link--strong" href="/questions/{{ s.set_id }}">
+            {{ s.title or s.set_id }}
+          </a>
+          <div class="mono muted small">{{ s.set_id }}</div>
+        </td>
+        <td><span class="pill pill--{{ s.status }}">{{ s.status.replace('_', ' ') }}</span></td>
+        <td>{{ s.author_or_dash }}</td>
+        <td>{{ s.reviewer_or_dash }}</td>
+        <td class="num">{{ s.question_count }}</td>
+        <td class="muted small">{{ s.updated_at[:19] }}</td>
+        <td class="actions">
+          <a class="btn btn--ghost btn--sm" href="/questions/{{ s.set_id }}">Open</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty card">
+  <h2 class="empty__title">No question sets yet</h2>
+  <p class="empty__body">
+    Import a folder of <code>.txt</code> answer-key files to create your first set.
+  </p>
+  <a class="btn btn--primary" href="/questions/import">+ Import new set</a>
+</div>
+{% endif %}
+{% endblock %}
