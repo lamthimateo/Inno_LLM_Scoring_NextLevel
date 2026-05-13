@@ -113,16 +113,22 @@ def test_full_flow_end_to_end():
         r = client.post("/questions/demo_v1/lock", follow_redirects=False)
         assert r.status_code in (302, 303)
 
-        # 3. Bob starts a run with mocked adapters.
-        with patch(
+        # 3. Bob starts a run with mocked adapters. The catalog-backed
+        # form now enforces ``requires_env``, so set a stub ``OPENAI_API_KEY``
+        # for the duration of this step — the adapter itself is patched out.
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-stub"}, clear=False), patch(
             "src.benchmark.runs.get_adapter",
             side_effect=lambda mid: GoodAdapter(mid.split(":", 1)[1]),
         ):
+            # The form now picks ids from the curated catalog. We pin two
+            # OpenAI direct entries so the route's env validation passes —
+            # ``OPENAI_API_KEY`` is asserted set further up, and the
+            # adapter call itself is patched out.
             r = client.post(
                 "/runs/new",
                 data={
                     "set_id": "demo_v1",
-                    "model_ids_csv": "fake:m1\nfake:m2",
+                    "models": ["openai:gpt-5.5", "openai:gpt-5-mini"],
                     "notes": "demo",
                 },
                 follow_redirects=False,
@@ -140,7 +146,7 @@ def test_full_flow_end_to_end():
                 time.sleep(0.05)
             assert "badge-done" in r.text, r.text[:500]
             # Both models scored full 2 points (2 correct, 0 wrong).
-            assert "good:m1" in r.text
-            assert "good:m2" in r.text
+            assert "good:gpt-5.5" in r.text
+            assert "good:gpt-5-mini" in r.text
 
     Base.metadata.drop_all(bind=db_module.engine)
