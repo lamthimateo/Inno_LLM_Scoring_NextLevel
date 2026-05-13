@@ -1,0 +1,30 @@
+{#
+  Pagination partial.
+  Expects:
+    - page (int, 1-indexed)
+    - total_pages (int)
+    - page_url(p) function or `url_pattern` string with {{p}} marker
+#}
+{% if total_pages and total_pages > 1 %}
+<nav class="row" role="navigation" aria-label="Pagination"
+     style="justify-content:center; padding: var(--space-4) 0;">
+  {% set prev_disabled = page <= 1 %}
+  {% set next_disabled = page >= total_pages %}
+
+  <a class="btn btn-sm{% if prev_disabled %} btn-ghost{% endif %}"
+     aria-disabled="{{ 'true' if prev_disabled else 'false' }}"
+     {% if not prev_disabled %}href="{{ url_pattern.replace('{p}', (page-1)|string) }}"{% endif %}>
+    ← Prev
+  </a>
+
+  <span class="muted text-sm">
+    Page <b class="soft">{{ page }}</b> of {{ total_pages }}
+  </span>
+
+  <a class="btn btn-sm{% if next_disabled %} btn-ghost{% endif %}"
+     aria-disabled="{{ 'true' if next_disabled else 'false' }}"
+     {% if not next_disabled %}href="{{ url_pattern.replace('{p}', (page+1)|string) }}"{% endif %}>
+    Next →
+  </a>
+</nav>
+{% endif %}

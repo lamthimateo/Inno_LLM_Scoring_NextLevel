@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% set active_tab = 'questions' %}
+{% block title %}Edit {{ question.qid }} · {{ set.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="title">
+    <div class="row-tight mb-2">
+      <a href="{{ url_for('questions.detail', set_id=set.set_id) }}" class="muted text-sm">← {{ set.title }}</a>
+    </div>
+    <h1>Edit question <code class="kbd text-lg">{{ question.qid }}</code></h1>
+    <div class="row-tight mt-2 muted text-sm">
+      <span class="cat cat-{{ question.qid[:1] }}">{{ question.qid[:1] }}</span>
+      <span>{{ question.category }}</span>
+      <span>·</span>
+      <span>Set status:</span>
+      {% with status=set.status %}{% include "components/_status_badge.html" %}{% endwith %}
+    </div>
+  </div>
+</div>
+
+{% if set.status != 'draft' %}
+  <div class="alert alert-warn mb-4">
+    <div class="alert-body">
+      <div class="alert-title">This set is not editable</div>
+      <div>Only sets in <b>draft</b> can be edited. Revert to draft from the detail page if you have permission.</div>
+    </div>
+  </div>
+{% endif %}
+
+<form method="post"
+      action="{{ url_for('questions.edit_one', set_id=set.set_id, qid=question.qid) }}"
+      hx-post="{{ url_for('questions.edit_one', set_id=set.set_id, qid=question.qid) }}"
+      hx-target="#preview-pane"
+      hx-trigger="input changed delay:300ms from:find input, input changed delay:300ms from:find textarea"
+      class="q-edit-grid">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+
+  {# LEFT: editor #}
+  <div class="stack">
+    <div class="card">
+      <div class="card-header"><h3>Question</h3><span class="muted text-sm">QID <code class="kbd">{{ question.qid }}</code></span></div>
+
+      <div class="form-field">
+        <label for="prompt">Prompt</label>
+        <textarea class="textarea" id="prompt" name="prompt"
+                  rows="4" required>{{ question.prompt }}</textarea>
+      </div>
+
+      <div class="form-field">
+        <label>Choices</label>
+        <div class="stack-tight">
+          {% for letter in ['A','B','C','D','E'] %}
+            <div class="row">
+              <label class="radio">
+                <input type="radio" name="correct_answer" value="{{ letter }}"
+                       {{ 'checked' if question.correct_answer == letter else '' }} required>
+                <span class="fw-600 text-mono">{{ letter }}</span>
+              </label>
+              <input class="input flex-1" name="choice_{{ letter }}"
+                     placeholder="Answer choice {{ letter }}…"
+                     value="{{ question.choices.get(letter, '') }}" required>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="help">Select the radio for the correct answer.</div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-field">
+          <label for="category">Category</label>
+          <input class="input" id="category" name="category" value="{{ question.category }}" readonly>
+          <div class="help">Derived from QID prefix.</div>
+        </div>
+        <div class="form-field">
+          <label for="scoring_rule">Scoring rule</label>
+          <input class="input" id="scoring_rule" name="scoring_rule"
+                 value="{{ question.scoring_rule or 'mcq_v1' }}" readonly>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="justify-content: space-between;">
+      <a class="btn btn-ghost" href="{{ url_for('questions.detail', set_id=set.set_id) }}">Cancel</a>
+      <div class="row-tight">
+        {% if question.versions and question.versions|length > 1 %}
+          <a class="btn" href="{{ url_for('questions.diff', set_id=set.set_id, qid=question.qid) }}">View diff</a>
+        {% endif %}
+        <button class="btn btn-primary" type="submit"
+                {{ 'disabled' if set.status != 'draft' else '' }}>
+          Save changes
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# RIGHT: live preview #}
+  <div class="stack">
+    <div class="card preview-pane" id="preview-pane">
+      <div class="card-header">
+        <h3>Live preview</h3>
+        <span class="htmx-indicator muted text-sm">rendering…</span>
+      </div>
+      <div class="q-item" style="border: 0;">
+        <div style="padding: 6px 0;">
+          <div class="row-tight mb-2">
+            <span class="qid text-mono">{{ question.qid }}</span>
+            <span class="cat cat-{{ question.qid[:1] }}">{{ question.qid[:1] }}</span>
+          </div>
+          <p class="fw-600 mb-3">{{ question.prompt }}</p>
+          <div class="q-choices">
+            {% for letter in ['A','B','C','D','E'] %}
+              <div class="q-choice {{ 'correct' if question.correct_answer == letter else '' }}">
+                <span class="letter">{{ letter }}</span>
+                <span>{{ question.choices.get(letter, '') }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}

@@ -1,56 +1,175 @@
-{% extends "_base.html" %}
-{% block title %}Import question set · Inno LLM Scoring{% endblock %}
+{% extends "base.html" %}
+{% set active_tab = 'questions' %}
+{% block title %}Import questions · Inno LLM Scoring{% endblock %}
 
 {% block content %}
-<header class="pageheader">
-  <div class="pageheader__title">
+<div class="page-header">
+  <div class="title">
     <h1>Import a question set</h1>
-    <p>Upload one or more <code>.txt</code> answer-key files. The set lands as <strong>draft</strong>.</p>
+    <div class="sub">
+      Drop one or more <span class="kbd">.txt</span> answer-key files. We will parse them and let you preview before saving.
+    </div>
   </div>
-  <div class="pageheader__actions">
-    <a class="btn btn--ghost" href="/questions">← Back to list</a>
+  <div class="actions">
+    <a class="btn btn-ghost" href="{{ url_for('questions.list') }}">Back to list</a>
   </div>
-</header>
+</div>
 
-{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+{# Step bar #}
+<div class="steps mb-4">
+  <span class="step {{ 'active' if step == 'upload' else 'done' }}">
+    <span class="num">1</span> Upload
+  </span>
+  <span class="step {{ 'active' if step == 'preview' else ('done' if step == 'saved' else '') }}">
+    <span class="num">2</span> Preview & validate
+  </span>
+  <span class="step {{ 'active' if step == 'saved' else '' }}">
+    <span class="num">3</span> Save as draft
+  </span>
+</div>
 
-<form method="post" action="/questions/import" enctype="multipart/form-data" class="card form form--wide">
-  <div class="form__row">
-    <span class="form__label">Set ID</span>
-    <input class="form__input mono" name="set_id"
-           value="{{ form.set_id or '' }}"
-           pattern="[a-z0-9._\-]+"
-           minlength="3" maxlength="48"
-           placeholder="benchmark_2026_q2" required autofocus />
-    <small class="form__hint">Lowercase letters, digits, dashes, dots. Used in the URL.</small>
+<form method="post" action="{{ url_for('questions.import_view') }}"
+      enctype="multipart/form-data" class="grid grid-content">
+
+  {# LEFT: form + dropzone or preview #}
+  <div class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+
+    <div class="card">
+      <div class="card-header"><h2>Set metadata</h2></div>
+      <div class="form-row">
+        <div class="form-field">
+          <label for="set_id">Set ID</label>
+          <input class="input text-mono" id="set_id" name="set_id" type="text"
+                 pattern="[a-z0-9._\-]+" minlength="3" maxlength="48"
+                 placeholder="benchmark_2026_q2"
+                 value="{{ form.set_id if form else '' }}" required>
+          <div class="help">Lowercase, dashes, dots — used in URLs.</div>
+        </div>
+        <div class="form-field">
+          <label for="title">Title</label>
+          <input class="input" id="title" name="title" type="text"
+                 placeholder="MCQ Benchmark — Spring 2026"
+                 value="{{ form.title if form else '' }}" required>
+        </div>
+      </div>
+      <div class="form-field">
+        <label for="description">Description</label>
+        <textarea class="textarea" id="description" name="description"
+                  placeholder="Optional notes for reviewers…">{{ form.description if form else '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Files</h2>
+        <span class="muted text-sm">.txt only · multiple allowed</span>
+      </div>
+
+      <label class="dropzone" data-dropzone>
+        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 16V4m0 0L7 9m5-5l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="3" y="16" width="18" height="5" rx="2" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <strong>Drop benchmark .txt files here</strong>
+        <span class="hint">or click to browse</span>
+        <input type="file" name="files" multiple accept=".txt"
+               hx-post="{{ url_for('questions.preview') }}"
+               hx-target="#preview-pane"
+               hx-encoding="multipart/form-data"
+               hx-trigger="change">
+        <div class="chips mt-3" data-dropzone-files></div>
+      </label>
+    </div>
+
+    <div class="row" style="justify-content: flex-end;">
+      <a class="btn btn-ghost" href="{{ url_for('questions.list') }}">Cancel</a>
+      <button class="btn btn-primary" type="submit" {{ 'disabled' if not preview else '' }}>
+        Save as draft
+      </button>
+    </div>
   </div>
 
-  <div class="form__row">
-    <span class="form__label">Title <span class="form__optional">(optional)</span></span>
-    <input class="form__input" name="title"
-           value="{{ form.title or '' }}"
-           placeholder="MCQ Benchmark — Spring 2026" />
-  </div>
+  {# RIGHT: preview + validation #}
+  <div class="stack">
+    <div class="card" id="preview-pane">
+      <div class="card-header">
+        <h3>Parsed preview</h3>
+        <span class="htmx-indicator muted text-sm">Parsing…</span>
+      </div>
+      {% if preview %}
+        <div class="row-tight mb-3">
+          <span class="chip"><b>Questions</b> {{ preview.questions|length }}</span>
+          {% for cat, n in preview.by_category.items() %}
+            <span class="chip"><span class="cat cat-{{ preview.cat_prefix(cat) }}">{{ preview.cat_prefix(cat) }}</span> {{ cat }} · <b>{{ n }}</b></span>
+          {% endfor %}
+        </div>
+        <ul class="q-list">
+          {% for q in preview.questions[:10] %}
+          <details class="q-item">
+            <summary>
+              <span class="qid">{{ q.qid }}</span>
+              <span class="cat cat-{{ q.qid[:1] }}">{{ q.qid[:1] }}</span>
+              <span class="q-prompt">{{ q.prompt }}</span>
+            </summary>
+            <div class="q-body">
+              <div class="q-choices">
+                {% for letter, text in q.choices.items() %}
+                  <div class="q-choice {{ 'correct' if letter == q.correct_answer else '' }}">
+                    <span class="letter">{{ letter }}</span>
+                    <span>{{ text }}</span>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </details>
+          {% endfor %}
+        </ul>
+        {% if preview.questions|length > 10 %}
+          <div class="muted text-sm mt-3">…and {{ preview.questions|length - 10 }} more.</div>
+        {% endif %}
+      {% else %}
+        <div class="empty" style="padding: var(--space-7) var(--space-3);">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M7 3h7l5 5v13H7V3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M13 3v6h6" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+          </svg>
+          <div class="muted">Upload files to see a live preview.</div>
+        </div>
+      {% endif %}
+    </div>
 
-  <div class="form__row">
-    <span class="form__label">Description <span class="form__optional">(optional)</span></span>
-    <textarea class="form__textarea" name="description"
-              placeholder="Notes for reviewers…">{{ form.description or '' }}</textarea>
-  </div>
-
-  <div class="form__row">
-    <span class="form__label">Files</span>
-    <input class="form__input" type="file" name="files" accept=".txt" multiple required />
-    <small class="form__hint">
-      Expected format: <code>C1. Prompt</code> + <code>A. choice</code> … <code>E. choice</code> +
-      <code>Correct answer: B</code>. QID prefix → category:
-      C=chemistry · E=emotions · M=math · A=reasoning3d · N=no_knowledge · X=contradiction.
-    </small>
-  </div>
-
-  <div class="form__actions">
-    <a class="btn btn--ghost" href="/questions">Cancel</a>
-    <button class="btn btn--primary" type="submit">Save as draft</button>
+    <div class="card">
+      <div class="card-header">
+        <h3>Validation</h3>
+        <span class="muted text-sm">Static checks</span>
+      </div>
+      {% if validation %}
+        <ul class="validation-list">
+          {% for check in validation %}
+            <li class="v-{{ check.level }}">
+              <svg class="v-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                {% if check.level == 'pass' %}
+                <path d="M5 10l3.5 3.5L15 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                {% elif check.level == 'warn' %}
+                <path d="M10 3l8 14H2l8-14z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                <path d="M10 9v3M10 15v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                {% else %}
+                <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/>
+                <path d="M7 7l6 6M13 7l-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                {% endif %}
+              </svg>
+              <div>
+                <div class="fw-600">{{ check.title }}</div>
+                {% if check.detail %}<div class="v-detail">{{ check.detail }}</div>{% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted text-sm">Validation will run once files are uploaded.</p>
+      {% endif %}
+    </div>
   </div>
 </form>
 {% endblock %}

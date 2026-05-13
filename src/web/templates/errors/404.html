@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}404 · Not found · Inno LLM Scoring{% endblock %}
+
+{% block content %}
+<div class="empty" style="padding: var(--space-10) var(--space-5);">
+  <div class="text-mono" style="font-size: 56px; letter-spacing: -0.04em; color: var(--accent);">
+    404
+  </div>
+  <h2>This page is off-script</h2>
+  <p class="muted">The page you were looking for doesn’t exist, or you may not have access to it.</p>
+  <div class="row mt-3">
+    <a class="btn btn-primary" href="{{ url_for('home') if current_user else url_for('login') }}">Go home</a>
+    <a class="btn btn-ghost" href="javascript:history.back();">← Back</a>
+  </div>
+  {% if requested_path %}
+    <div class="muted text-sm mt-4">
+      Requested: <code class="kbd">{{ requested_path }}</code>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

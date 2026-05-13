@@ -1,86 +1,118 @@
-{% extends "_base.html" %}
+{% extends "base.html" %}
+{% set active_tab = 'questions' %}
 {% block title %}Questions · Inno LLM Scoring{% endblock %}
 
 {% block content %}
-<header class="pageheader">
-  <div class="pageheader__title">
+<div class="page-header">
+  <div class="title">
     <h1>Question sets</h1>
-    <p>Author, review, and lock benchmark sets used by every run.</p>
+    <div class="sub">Author, review and lock benchmark sets used by every run.</div>
   </div>
-  <div class="pageheader__actions">
-    <a class="btn btn--primary" href="/questions/import">+ Import new set</a>
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ url_for('questions.import_view') }}">
+      <svg class="icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Import new set
+    </a>
   </div>
-</header>
+</div>
 
-<form method="get" action="/questions" class="toolbar">
-  <input class="form__input toolbar__search"
-         type="search" name="q"
-         value="{{ filter_search }}"
-         placeholder="Search by title, set_id, or description…" />
+<div class="toolbar" role="search">
+  <div class="field">
+    <small>Search</small>
+    <input type="search" name="q" placeholder="Filter by title, set_id, author…"
+           value="{{ filters.q or '' }}"
+           hx-get="{{ url_for('questions.list') }}"
+           hx-trigger="input changed delay:300ms"
+           hx-target="#set-table"
+           hx-select="#set-table"
+           hx-push-url="true">
+  </div>
 
-  <div class="chips" role="tablist">
-    {% set status_filters = [
-        ('', 'All', counts.get('total', 0)),
-        ('draft', 'Draft', counts.get('draft', 0)),
-        ('in_review', 'In review', counts.get('in_review', 0)),
-        ('approved', 'Approved', counts.get('approved', 0)),
-        ('locked', 'Locked', counts.get('locked', 0)),
+  <div class="chips" role="tablist" aria-label="Status filter">
+    {% set status_options = [
+      ('',           'All',        sets_count_total),
+      ('draft',      'Draft',      sets_count_draft),
+      ('in_review',  'In review',  sets_count_review),
+      ('approved',   'Approved',   sets_count_approved),
+      ('locked',     'Locked',     sets_count_locked),
     ] %}
-    {% for value, label, count in status_filters %}
-      {% set active = filter_status == value %}
-      <a class="chip {% if active %}chip--active{% endif %}"
-         href="/questions?status={{ value }}{% if filter_search %}&q={{ filter_search }}{% endif %}">
-        {{ label }}<span class="chip__count">{{ count }}</span>
+    {% for value, label, count in status_options %}
+      <a class="chip interactive {{ 'active' if filters.status == value else '' }}"
+         href="{{ url_for('questions.list', status=value, q=filters.q) }}"
+         role="tab" aria-selected="{{ 'true' if filters.status == value else 'false' }}">
+        {{ label }}
+        {% if count is not none %}<b>{{ count }}</b>{% endif %}
       </a>
     {% endfor %}
   </div>
 
-  <noscript><button class="btn" type="submit">Apply</button></noscript>
-</form>
+  <div class="flex-1"></div>
 
-{% if sets %}
-<div class="table-wrap card">
-  <table class="table">
-    <thead>
-      <tr>
-        <th>Title</th>
-        <th>Status</th>
-        <th>Author</th>
-        <th>Reviewer</th>
-        <th class="num">Questions</th>
-        <th>Updated</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s in sets %}
-      <tr>
-        <td>
-          <a class="link link--strong" href="/questions/{{ s.set_id }}">
-            {{ s.title or s.set_id }}
-          </a>
-          <div class="mono muted small">{{ s.set_id }}</div>
-        </td>
-        <td><span class="pill pill--{{ s.status }}">{{ s.status.replace('_', ' ') }}</span></td>
-        <td>{{ s.author_or_dash }}</td>
-        <td>{{ s.reviewer_or_dash }}</td>
-        <td class="num">{{ s.question_count }}</td>
-        <td class="muted small">{{ s.updated_at[:19] }}</td>
-        <td class="actions">
-          <a class="btn btn--ghost btn--sm" href="/questions/{{ s.set_id }}">Open</a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <span class="muted text-sm">{{ sets|length }} set{{ '' if sets|length == 1 else 's' }}</span>
 </div>
-{% else %}
-<div class="empty card">
-  <h2 class="empty__title">No question sets yet</h2>
-  <p class="empty__body">
-    Import a folder of <code>.txt</code> answer-key files to create your first set.
-  </p>
-  <a class="btn btn--primary" href="/questions/import">+ Import new set</a>
+
+<div id="set-table" class="table-wrap">
+  {% if sets %}
+  <div class="table-scroll">
+    <table class="table sortable">
+      <thead>
+        <tr>
+          <th data-sort="string">Title</th>
+          <th data-sort="string">Status</th>
+          <th data-sort="string">Author</th>
+          <th data-sort="string">Reviewer</th>
+          <th data-sort="number" class="num">Questions</th>
+          <th data-sort="date">Updated</th>
+          <th class="actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sets %}
+        <tr>
+          <td>
+            <div class="stack-tight">
+              <a class="fw-600" href="{{ url_for('questions.detail', set_id=s.set_id) }}">{{ s.title }}</a>
+              <span class="muted text-xs text-mono">{{ s.set_id }}</span>
+            </div>
+          </td>
+          <td>
+            {% with status=s.status %}{% include "components/_status_badge.html" %}{% endwith %}
+          </td>
+          <td>{{ s.author or '—' }}</td>
+          <td>{{ s.reviewer or '—' }}</td>
+          <td class="num">{{ s.question_count }}</td>
+          <td data-value="{{ s.updated_at }}">
+            <time datetime="{{ s.updated_at }}">{{ s.updated_at_human or s.updated_at }}</time>
+          </td>
+          <td class="actions">
+            <a class="btn btn-sm" href="{{ url_for('questions.detail', set_id=s.set_id) }}">Open</a>
+            {% if s.status == 'draft' and (current_user.username == s.author or current_user.role == 'admin') %}
+              <form method="post" action="{{ url_for('questions.submit_review', set_id=s.set_id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+                <button class="btn btn-sm" type="submit">Submit</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    {% with empty_icon='list',
+            empty_title='No question sets match your filters',
+            empty_body='Try clearing the search box or status chip.',
+            empty_cta_label='Import a new set',
+            empty_cta_href=url_for('questions.import_view') %}
+      {% include "components/_empty_state.html" %}
+    {% endwith %}
+  {% endif %}
 </div>
+
+{% if total_pages and total_pages > 1 %}
+  {% set url_pattern = url_for('questions.list', status=filters.status, q=filters.q, page='{p}') %}
+  {% include "components/_pagination.html" %}
 {% endif %}
 {% endblock %}

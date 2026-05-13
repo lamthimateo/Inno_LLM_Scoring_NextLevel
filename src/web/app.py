@@ -62,6 +62,16 @@ def results_alias():
     return RedirectResponse(url="/runs", status_code=307)
 
 
+@app.get("/account")
+def account_alias():
+    """The design's user-badge dropdown links to /account. No dedicated
+    account page exists yet; redirect to the change-password screen so the
+    link stays useful instead of 404'ing.
+    """
+
+    return RedirectResponse(url="/auth/change-password", status_code=307)
+
+
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok", "version": APP_VERSION}

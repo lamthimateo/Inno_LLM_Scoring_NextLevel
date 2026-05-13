@@ -1,86 +1,113 @@
-{# Status + leaderboard fragment, replaced via HTMX every 2s. #}
+{#
+  Run status + live leaderboard fragment, replaced via HTMX every 2 s
+  until the underlying job reaches a terminal state.
+
+  Inputs:
+    - run: Run row
+    - job: Job row (status / progress_done / progress_total / message / error)
+    - rows: leaderboard rows (model_id, total, correct, wrong, blank,
+            chemistry, emotions, math, reasoning3d, no_knowledge,
+            contradiction, format_violations)
+#}
 <div id="run-status"
-     hx-get="/runs/{{ run.run_id }}/status"
-     {% if job.status in ('done', 'error', 'cancelled') %}data-stopped="true"{% else %}hx-trigger="every 2s" hx-swap="outerHTML" hx-select="#run-status"{% endif %}>
+     {% if job.status in ('done', 'error', 'cancelled') %}
+       data-stopped="true"
+     {% else %}
+       hx-get="/runs/{{ run.run_id }}/status"
+       hx-trigger="every 2s"
+       hx-swap="outerHTML"
+       hx-select="#run-status"
+     {% endif %}>
 
   <section class="card stat-row">
     <div class="stat">
-      <span class="stat__label">Status</span>
-      <strong class="stat__value">
-        <span class="pill pill--{{ job.status }}">{{ job.status.replace('_', ' ') }}</span>
+      <span class="stat-label muted text-xs">Status</span>
+      <strong class="stat-value">
+        {% with status=job.status %}{% include "components/_status_badge.html" %}{% endwith %}
       </strong>
     </div>
     <div class="stat">
-      <span class="stat__label">Progress</span>
-      <strong class="stat__value">{{ job.progress_done }} / {{ job.progress_total }}</strong>
+      <span class="stat-label muted text-xs">Progress</span>
+      <strong class="stat-value">{{ job.progress_done }} / {{ job.progress_total }}</strong>
     </div>
     <div class="stat">
-      <span class="stat__label">Models scored</span>
-      <strong class="stat__value">{{ rows | length }}</strong>
+      <span class="stat-label muted text-xs">Models scored</span>
+      <strong class="stat-value">{{ rows | length }}</strong>
     </div>
     <div class="stat">
-      <span class="stat__label">Started</span>
-      <strong class="stat__value muted">{{ (job.started_at | string) if job.started_at else '—' }}</strong>
+      <span class="stat-label muted text-xs">Started</span>
+      <strong class="stat-value muted">{{ (job.started_at | string) if job.started_at else '—' }}</strong>
     </div>
   </section>
 
   {% if job.progress_total %}
-  <div class="progress card">
-    <div class="progress__bar" style="width: {{ (job.progress_done * 100 // job.progress_total) if job.progress_total else 0 }}%"></div>
-  </div>
+    <div class="progress">
+      <div class="bar-fill"
+           style="width: {{ (job.progress_done * 100 // job.progress_total) if job.progress_total else 0 }}%;"></div>
+    </div>
   {% endif %}
 
   {% if job.message %}
-  <div class="flash flash--ok">{{ job.message }}</div>
+    <div class="alert alert-info">
+      <div class="alert-body"><div>{{ job.message }}</div></div>
+    </div>
   {% endif %}
   {% if job.error %}
-  <div class="flash flash--err">{{ job.error }}</div>
+    <div class="alert alert-error">
+      <div class="alert-body"><div>{{ job.error }}</div></div>
+    </div>
   {% endif %}
 
   <section class="card">
-    <h2 class="card__title">Leaderboard</h2>
+    <div class="card-header"><h2>Leaderboard</h2></div>
     {% if rows %}
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Model</th>
-            <th class="num">Total</th>
-            <th class="num">Correct</th>
-            <th class="num">Wrong</th>
-            <th class="num">Blank</th>
-            <th class="num">Chemistry</th>
-            <th class="num">Emotions</th>
-            <th class="num">Math</th>
-            <th class="num">3D Reasoning</th>
-            <th class="num">No knowledge</th>
-            <th class="num">Contradiction</th>
-            <th class="num">Format violations</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in rows %}
-          <tr>
-            <td class="mono">{{ r.model_id }}</td>
-            <td class="num"><strong>{{ r.total }}</strong></td>
-            <td class="num">{{ r.correct }}</td>
-            <td class="num">{{ r.wrong }}</td>
-            <td class="num">{{ r.blank }}</td>
-            <td class="num">{{ r.chemistry }}</td>
-            <td class="num">{{ r.emotions }}</td>
-            <td class="num">{{ r.math }}</td>
-            <td class="num">{{ r.reasoning3d }}</td>
-            <td class="num">{{ r.no_knowledge }}</td>
-            <td class="num">{{ r.contradiction }}</td>
-            <td class="num">{{ r.format_violations }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th class="num">Total</th>
+                <th class="num">Correct</th>
+                <th class="num">Wrong</th>
+                <th class="num">Blank</th>
+                <th class="num">Chemistry</th>
+                <th class="num">Emotions</th>
+                <th class="num">Math</th>
+                <th class="num">3D</th>
+                <th class="num">No-knowledge</th>
+                <th class="num">Contradiction</th>
+                <th class="num">Format violations</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+                <tr>
+                  <td class="text-mono">{{ r.model_id }}</td>
+                  <td class="num">
+                    <span class="score-tag">
+                      <span class="dot {{ 'good' if r.total is not none and r.total >= 0 else 'bad' }}"></span>
+                      <strong>{{ r.total }}</strong>
+                    </span>
+                  </td>
+                  <td class="num">{{ r.correct }}</td>
+                  <td class="num">{{ r.wrong }}</td>
+                  <td class="num">{{ r.blank }}</td>
+                  <td class="num">{{ r.chemistry }}</td>
+                  <td class="num">{{ r.emotions }}</td>
+                  <td class="num">{{ r.math }}</td>
+                  <td class="num">{{ r.reasoning3d }}</td>
+                  <td class="num">{{ r.no_knowledge }}</td>
+                  <td class="num">{{ r.contradiction }}</td>
+                  <td class="num">{{ r.format_violations }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
     {% else %}
       <p class="muted">No models have finished yet.</p>
     {% endif %}
   </section>
-
 </div>

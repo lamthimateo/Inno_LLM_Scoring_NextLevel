@@ -18,9 +18,9 @@ db/*.db-journal
 db/*.db-wal
 db/*.db-shm
 
-# Generated outputs
-results/
-out/
+# Generated outputs (root-only so e.g. src/web/templates/results/ is still tracked)
+/results/
+/out/
 
 # Editors / IDEs
 .idea/

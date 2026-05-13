@@ -34,16 +34,36 @@ router = APIRouter(prefix="/runs", tags=["runs"])
 @router.get("", response_class=HTMLResponse)
 def list_view(
     request: Request,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
     user: User = Depends(require_login),
     session: Session = Depends(get_session),
 ):
-    runs = list_runs(session)
+    raw = list_runs(session)
+    # Adapt the dict shape coming out of list_runs() to the keys the
+    # design-system runs/list.html template expects.
+    runs = []
+    for r in raw:
+        models = []  # we don't yet store the per-run model-ids list outside
+                    # the Job payload; cheap stub for the chip row.
+        runs.append(
+            {
+                **r,
+                "models": models,
+                "set_title": r.get("set_id"),
+                "started_by": r.get("started_by_username"),
+                "started_at": r.get("created_at"),
+                "best_score": r.get("top_score"),
+            }
+        )
     return render(
         request,
         "runs/list.html",
         current_user=user,
         active_tab="results",
         runs=runs,
+        locked_sets=[],
+        filters={"status": status or "", "q": q or ""},
     )
 
 
@@ -123,6 +143,13 @@ def detail(
     if run is None or job is None:
         raise HTTPException(status_code=404, detail="Run not found.")
     rows = fetch_leaderboard_rows(session, run_id)
+    # Decorate ``run`` with extras the polished detail template asks for.
+    run.status = job.status
+    run.set_title = run.set_id
+    run.started_by = None
+    run.started_at = run.created_at
+    run.partial_aggregates = []
+    run.model_runs = []
     return render(
         request,
         "runs/detail.html",
