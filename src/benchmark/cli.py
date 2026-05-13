@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+"""Benchmark CLI.
+
+Wires every subcommand exposed by the project:
+
+    init-db | import-questions | submit-review | approve | lock
+    build-prompt | run-file | run-openai | export | serve
+
+Each subcommand is a thin adapter over a focused module under
+``src/benchmark/`` so the CLI stays simple and the underlying functions stay
+unit-testable. ``scripts/benchmark.py`` is a backwards-compatible wrapper
+that forwards to :func:`main` here.
+"""
+
 import argparse
 import json
 import os
@@ -226,6 +239,11 @@ def main(argv=None) -> None:
         print(f"Initialized DB at {args.db}")
         return
 
+    # Serving is purely static and should not require opening the DB.
+    if args.cmd == "serve":
+        serve_dir(args.dir, args.port)
+        return
+
     conn = connect(args.db)
     try:
         if args.cmd == "import-questions":
@@ -295,14 +313,8 @@ def main(argv=None) -> None:
             print(f"Wrote: {os.path.join(args.out, 'leaderboard', 'index.html')}")
             return
 
-        if args.cmd == "serve":
-            # serving doesn't need DB
-            pass
     finally:
         conn.close()
-
-    if args.cmd == "serve":
-        serve_dir(args.dir, args.port)
 
 
 if __name__ == "__main__":

@@ -5,11 +5,13 @@ description = "Mini LM-Arena-style benchmark runner with review workflow, adapte
 requires-python = ">=3.10"
 dependencies = [
   "openai==2.30.0",
+  "fastapi==0.116.1",
+  "uvicorn==0.35.0",
+  "python-multipart",
 ]
 
 [project.scripts]
 benchmark = "src.benchmark.cli:main"
 
 [tool.unittest]
-# kept empty; tests are run via `python -m unittest`
-
+# Tests are run via `python -m unittest discover -s tests`.

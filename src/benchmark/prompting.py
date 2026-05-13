@@ -1,3 +1,12 @@
+"""Build the strict MCQ prompt sent to every model.
+
+The prompt enforces a deterministic output shape (``QID: LETTER`` per line)
+so the parser in :mod:`src.evaluator.parser_mcq` can score replies without
+LLM-side variability. Only ``approved`` or ``locked`` sets may be used to
+build a prompt — this keeps benchmark runs reproducible against a frozen
+question set.
+"""
+
 import json
 
 

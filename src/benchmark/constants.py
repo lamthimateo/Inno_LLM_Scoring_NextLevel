@@ -1,3 +1,9 @@
+"""Project-wide default constants.
+
+Currently just the default SQLite path so both the CLI and the FastAPI web
+app resolve the same DB without duplicating string literals.
+"""
+
 import os
 
 

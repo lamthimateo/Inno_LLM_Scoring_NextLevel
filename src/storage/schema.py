@@ -1,3 +1,19 @@
+"""Database schema (DDL).
+
+Single ``SCHEMA_SQL`` string applied by ``init-db``. Tables, in order:
+
+    question_sets  -> review workflow (draft / in_review / approved / locked)
+    questions      -> rows belonging to a set, identified by composite (qid, set_id)
+    runs           -> one evaluation run against a set
+    model_runs     -> raw model output + provider meta per (run, model)
+    answers        -> per-question scoring for one model_run
+    aggregates     -> per-model_run totals used by the leaderboard
+
+Additive schema changes should also be reflected in
+:func:`src.storage.db._ensure_schema_migrations` so existing DBs upgrade in
+place.
+"""
+
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
 

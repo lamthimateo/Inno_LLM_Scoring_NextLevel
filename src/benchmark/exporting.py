@@ -1,3 +1,14 @@
+"""Export a finished run to CSV + static leaderboard assets.
+
+Joins ``model_runs`` with ``aggregates`` for the given ``run_id`` and writes:
+
+- ``<out_dir>/benchmark_results.csv`` — one row per model
+- ``<out_dir>/leaderboard/leaderboard.json`` — same data as JSON
+- ``<out_dir>/leaderboard/index.html`` — self-contained dashboard (no JS deps)
+
+The leaderboard HTML lives in :mod:`src.web.leaderboard`.
+"""
+
 from pathlib import Path
 
 from src.web.leaderboard import write_leaderboard_assets

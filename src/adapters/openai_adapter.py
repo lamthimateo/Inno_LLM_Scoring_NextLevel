@@ -1,3 +1,18 @@
+"""OpenAI adapter (Responses API).
+
+The only fully wired adapter today. Highlights:
+
+- Uses ``client.responses.create(...)`` from the official ``openai`` SDK.
+- :func:`_extract_output_text` is resilient to SDK response shape changes.
+- Retries with exponential backoff (0.5s, 1s, 2s, ...) on rate-limit /
+  timeout / connection / 5xx errors.
+- Captures provider metadata (response id, usage, elapsed_ms) into
+  ``ModelResult.meta`` so it lands in ``model_runs.meta_json``.
+
+Reads ``OPENAI_API_KEY`` from the environment; a missing key produces a
+clear ``RuntimeError`` rather than a cryptic SDK error.
+"""
+
 import os
 import time
 from typing import Any, Dict, Optional, Tuple

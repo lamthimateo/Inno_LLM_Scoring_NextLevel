@@ -1,3 +1,24 @@
+"""Import benchmark question files into SQLite.
+
+Reads every ``*.txt`` under ``imports/answer_key/`` and populates the
+``question_sets`` and ``questions`` tables. The expected file format is::
+
+    C1. <prompt text>
+    A. <choice A>
+    B. <choice B>
+    ...
+    E. <choice E>
+    Correct answer: B
+
+QID prefix maps to category:
+
+    C = chemistry        E = emotions        M = math
+    A = reasoning3d      N = no_knowledge    X = contradiction
+
+A question is only inserted if it has at least 5 choices. Locked sets cannot
+be re-imported (use a new ``--set-id`` such as ``benchmark_v2`` instead).
+"""
+
 import json
 import re
 from pathlib import Path
@@ -39,10 +60,20 @@ def parse_answer_key_from_txt_folder(folder: str) -> dict:
 
 def import_questions(conn, *, source: str, set_id: str, author: str) -> None:
     now = utc_now_iso()
+    existing = conn.execute("SELECT status FROM question_sets WHERE set_id=?", (set_id,)).fetchone()
+    if existing and existing["status"] == "locked":
+        raise SystemExit(
+            f"Set '{set_id}' is locked. Use a new --set-id (e.g. {set_id}_v2) or start from a fresh DB."
+        )
+
     conn.execute(
         """INSERT INTO question_sets(set_id,status,author,reviewer,created_at,updated_at)
            VALUES(?,?,?,?,?,?)
-           ON CONFLICT(set_id) DO UPDATE SET author=excluded.author, updated_at=excluded.updated_at""",
+           ON CONFLICT(set_id) DO UPDATE SET
+             status='draft',
+             author=excluded.author,
+             reviewer=NULL,
+             updated_at=excluded.updated_at""",
         (set_id, "draft", author, None, now, now),
     )
 

@@ -1,6 +1,0 @@
-model_id,total,chemistry,emotions,math,reasoning3d,no_knowledge,contradiction,correct,wrong,blank,format_violations
-gemini3,38,-1,-1,10,10,10,10,58,2,0,0
-gpt5,38,10,-12,10,10,10,10,58,2,0,0
-deepseek,5,-12,-23,10,10,10,10,55,5,0,0
-grok,5,-12,-12,10,-1,10,10,55,5,0,0
-sonnet4,5,-1,-34,10,10,10,10,55,5,0,0

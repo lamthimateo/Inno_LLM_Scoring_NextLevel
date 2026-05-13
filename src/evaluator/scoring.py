@@ -1,3 +1,15 @@
+"""Scoring rules for the MCQ benchmark.
+
+Rules (intentionally penal so models can't sandbag with random guesses):
+
+    correct answer   -> +1
+    blank / no answer -> 0
+    wrong answer     -> -10
+
+Category aggregation maps each QID prefix (``C/E/M/A/N/X``) to a named
+category column on the ``aggregates`` table.
+"""
+
 from typing import Dict, Optional, Tuple
 
 SCORE_CORRECT = 1
