@@ -13,14 +13,22 @@ POST /runs/{run_id}/cancel   request cancellation of an in-flight run
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from src.adapters.registry import DEFAULT_MODELS
+from src.adapters.registry import (
+    DEFAULT_MODELS,
+    MODEL_CATALOG,
+    catalog_by_id,
+    catalog_grouped,
+    default_catalog_ids,
+    group_is_available,
+)
 from src.auth.dependencies import require_login
 from src.benchmark.exporting import fetch_leaderboard_rows
 from src.benchmark.queries import list_sets
@@ -77,8 +85,76 @@ def list_view(
         runs=runs,
         locked_sets=locked_sets,
         default_models=DEFAULT_MODELS,
+        **_catalog_context(),
         filters={"status": status or "", "q": q or ""},
     )
+
+
+def _catalog_context() -> dict:
+    """Template kwargs that drive the model picker on runs/new.html."""
+
+    defaults = default_catalog_ids()
+    return {
+        "model_catalog": MODEL_CATALOG,
+        "model_catalog_grouped": catalog_grouped(),
+        "model_catalog_defaults": defaults,
+        "model_catalog_group_available": {
+            group: group_is_available(group)
+            for group, _entries in catalog_grouped()
+        },
+    }
+
+
+def _validate_selected_models(
+    raw: List[str],
+) -> tuple[List[str], Optional[str]]:
+    """Resolve the form-submitted model ids against the curated catalog.
+
+    Returns ``(model_ids, error)``. ``error`` is ``None`` on success.
+
+    Rules
+    -----
+    - Empty selection → silently fall back to :func:`default_catalog_ids`
+      (so a user pressing "Start" with nothing checked still gets a working
+      run).
+    - Unknown id → flash error, no fallback.
+    - Known id whose ``requires_env`` is missing → flash error naming the
+      provider key the operator needs to set.
+    - Duplicates → de-duplicated while preserving submission order.
+    """
+
+    cleaned = [m.strip() for m in raw if m and m.strip()]
+    seen: dict[str, None] = {}
+    for m in cleaned:
+        seen.setdefault(m, None)
+    cleaned = list(seen.keys())
+
+    if not cleaned:
+        return default_catalog_ids(), None
+
+    by_id = catalog_by_id()
+    unknown = [m for m in cleaned if m not in by_id]
+    if unknown:
+        return [], (
+            "Unknown model id"
+            f"{'s' if len(unknown) > 1 else ''}: "
+            f"{', '.join(repr(m) for m in unknown)}. "
+            "Pick from the curated list."
+        )
+
+    missing_env: list[tuple[str, str]] = []
+    for m in cleaned:
+        entry = by_id[m]
+        if not os.getenv(entry.requires_env):
+            missing_env.append((entry.label, entry.requires_env))
+    if missing_env:
+        labels = ", ".join(f"{lbl} (needs {env})" for lbl, env in missing_env)
+        return [], (
+            f"These models require a provider key that isn't set: {labels}. "
+            "Add it to .env and restart the app."
+        )
+
+    return cleaned, None
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -90,6 +166,7 @@ def new_form(
     locked_sets = [
         s for s in list_sets(session, status=SetStatus.LOCKED.value)
     ]
+    defaults = default_catalog_ids()
     return render(
         request,
         "runs/new.html",
@@ -97,8 +174,9 @@ def new_form(
         active_tab="results",
         locked_sets=locked_sets,
         default_models=DEFAULT_MODELS,
+        **_catalog_context(),
         error=None,
-        form={"set_id": "", "model_ids_csv": "\n".join(DEFAULT_MODELS), "notes": ""},
+        form={"set_id": "", "selected_models": defaults, "notes": ""},
     )
 
 
@@ -106,16 +184,27 @@ def new_form(
 def new_submit(
     request: Request,
     set_id: str = Form(...),
-    model_ids_csv: str = Form(...),
+    models: Optional[List[str]] = Form(default=None),
     notes: str = Form(""),
     user: User = Depends(require_login),
     session: Session = Depends(get_session),
 ):
-    model_ids = [
-        line.strip()
-        for line in model_ids_csv.replace(",", "\n").splitlines()
-        if line.strip()
-    ]
+    model_ids, error = _validate_selected_models(models or [])
+    if error is not None:
+        session.rollback()
+        locked_sets = list_sets(session, status=SetStatus.LOCKED.value)
+        return render(
+            request,
+            "runs/new.html",
+            current_user=user,
+            active_tab="results",
+            locked_sets=locked_sets,
+            default_models=DEFAULT_MODELS,
+            **_catalog_context(),
+            error=error,
+            form={"set_id": set_id, "selected_models": models, "notes": notes},
+            status_code=400,
+        )
 
     try:
         run, _job = create_run(
@@ -135,8 +224,9 @@ def new_submit(
             active_tab="results",
             locked_sets=locked_sets,
             default_models=DEFAULT_MODELS,
+            **_catalog_context(),
             error=str(exc),
-            form={"set_id": set_id, "model_ids_csv": model_ids_csv, "notes": notes},
+            form={"set_id": set_id, "selected_models": models, "notes": notes},
             status_code=400,
         )
 

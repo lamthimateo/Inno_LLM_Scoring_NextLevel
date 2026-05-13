@@ -257,6 +257,42 @@
     rows.forEach(function (r) { tbody.appendChild(r); });
   }
 
+  /* ---------- Model picker (runs/new.html) ----------------------------- */
+  function initModelPickers() {
+    document.querySelectorAll("[data-model-picker]").forEach(function (picker) {
+      const select  = picker.querySelector("[data-model-picker-select]");
+      const reset   = picker.querySelector("[data-model-picker-reset]");
+      const countEl = picker.querySelector("[data-model-picker-count-value]");
+      if (!select) return;
+
+      let defaults = [];
+      try { defaults = JSON.parse(select.getAttribute("data-model-picker-defaults") || "[]"); }
+      catch (_) { defaults = []; }
+
+      function updateCount() {
+        if (!countEl) return;
+        const n = Array.from(select.selectedOptions).length;
+        countEl.textContent = String(n);
+      }
+      function setSelection(ids) {
+        const wanted = new Set(ids);
+        Array.from(select.options).forEach(function (opt) {
+          opt.selected = wanted.has(opt.value);
+        });
+        updateCount();
+      }
+
+      select.addEventListener("change", updateCount);
+      if (reset) {
+        reset.addEventListener("click", function (e) {
+          e.preventDefault();
+          setSelection(defaults);
+        });
+      }
+      updateCount();
+    });
+  }
+
   /* ---------- HTMX wiring --------------------------------------------- */
   function initHtmx() {
     if (!window.htmx) return;
@@ -292,6 +328,7 @@
     initCopy();
     initConfirms();
     initSortableTables();
+    initModelPickers();
     initHtmx();
   }
   if (document.readyState === "loading") {

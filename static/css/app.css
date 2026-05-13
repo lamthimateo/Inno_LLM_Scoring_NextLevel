@@ -482,6 +482,39 @@ html[data-theme="dark"] .nav {
   box-shadow: 0 0 0 3px var(--bad-soft);
 }
 
+/* Model picker (runs/new.html) — native <select multiple> styled to fit the
+   ivory/coral design system. We keep it native for accessibility; the chip
+   and reset button next to it are progressive enhancements. */
+.select.model-picker {
+  padding: 6px;
+  min-height: 220px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  background: var(--surface);
+}
+.select.model-picker optgroup {
+  font-weight: 700;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 8px 6px 4px;
+}
+.select.model-picker option {
+  padding: 7px 10px;
+  color: var(--text);
+  border-radius: 6px;
+}
+.select.model-picker option:checked {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.select.model-picker option:disabled {
+  color: var(--text-subtle);
+  font-style: italic;
+}
+
 .check, .radio {
   display: inline-flex;
   align-items: center;
