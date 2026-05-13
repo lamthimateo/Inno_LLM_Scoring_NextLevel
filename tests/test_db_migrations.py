@@ -1,23 +1,43 @@
-import os
-import tempfile
-import unittest
+"""Verify the SQLAlchemy schema can be created cleanly."""
 
-from src.storage.db import connect, init_db
+from __future__ import annotations
 
+from sqlalchemy import inspect
 
-class TestDbMigrations(unittest.TestCase):
-    def test_connect_applies_meta_json_migration(self):
-        with tempfile.TemporaryDirectory() as td:
-            db_path = os.path.join(td, "benchmark.db")
-            init_db(db_path)
-            conn = connect(db_path)
-            try:
-                cols = {r["name"] for r in conn.execute("PRAGMA table_info(model_runs)").fetchall()}
-                self.assertIn("meta_json", cols)
-            finally:
-                conn.close()
+from src.storage import db as db_module
+from src.storage.models import Base
 
 
-if __name__ == "__main__":
-    unittest.main()
+EXPECTED_TABLES = {
+    "users",
+    "audit_log",
+    "question_sets",
+    "questions",
+    "question_versions",
+    "runs",
+    "model_runs",
+    "answers",
+    "aggregates",
+    "jobs",
+}
 
+
+def test_create_all_creates_every_expected_table():
+    db_module.reset_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=db_module.engine)
+
+    inspector = inspect(db_module.engine)
+    tables = set(inspector.get_table_names())
+    missing = EXPECTED_TABLES - tables
+    assert not missing, f"missing tables: {missing}"
+
+
+def test_model_runs_has_meta_json_column():
+    """Sanity-check the column the v0.1 migration originally added."""
+
+    db_module.reset_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=db_module.engine)
+
+    inspector = inspect(db_module.engine)
+    cols = {c["name"] for c in inspector.get_columns("model_runs")}
+    assert "meta_json" in cols

@@ -1,109 +1,147 @@
-"""SQLAlchemy engine + session helpers.
+"""SQLAlchemy engine + session factory.
 
-Single source of truth for opening a connection to the project database.
+Reads ``DATABASE_URL`` from the environment. In production (docker-compose)
+this points at Postgres; in tests we override it to ``sqlite:///:memory:``.
 
-Configuration:
+Usage patterns
+--------------
 
-- Production: ``DATABASE_URL=postgresql+psycopg://user:pass@host:5432/db``
-  set by ``docker-compose.yml``.
-- Tests: defaults to in-memory SQLite. Tests should pass an explicit URL
-  or rely on the ``setup_test_db`` fixture.
-
-Usage in FastAPI routes::
+FastAPI request dependency::
 
     from fastapi import Depends
-    from sqlalchemy.orm import Session
     from src.storage.db import get_session
 
-    @app.get("/things")
-    def list_things(db: Session = Depends(get_session)):
+    @app.get("/something")
+    def view(session: Session = Depends(get_session)):
         ...
 
-Usage in non-request code (worker jobs, scripts)::
+Background job / script::
 
-    with session_scope() as db:
-        db.add(thing)
+    from src.storage.db import session_scope
+
+    with session_scope() as session:
+        ...   # commits on success, rolls back on exception
 """
 
 from __future__ import annotations
 
 import os
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from typing import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.storage.models import Base
+from .models import Base
 
 
-DEFAULT_DATABASE_URL = "sqlite:///./db/benchmark.sqlite3"
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql+psycopg://benchmark:benchmark@localhost:5432/benchmark",
+)
 
 
-def _resolve_database_url() -> str:
-    return os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL).strip()
+def _build_engine(database_url: str) -> Engine:
+    """Build a SQLAlchemy engine with sane defaults for both Postgres and SQLite."""
 
-
-def _make_engine(url: str | None = None) -> Engine:
-    url = url or _resolve_database_url()
-    connect_args: dict[str, object] = {}
-    if url.startswith("sqlite"):
-        # Needed when FastAPI's threadpool shares a connection across threads.
+    connect_args: dict = {}
+    if database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
-    return create_engine(url, future=True, pool_pre_ping=True, connect_args=connect_args)
+
+    return create_engine(
+        database_url,
+        future=True,
+        pool_pre_ping=True,
+        connect_args=connect_args,
+    )
 
 
-engine: Engine = _make_engine()
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+engine: Engine = _build_engine(DATABASE_URL)
+
+
+# Ensure SQLite enforces foreign keys (off by default). No-op on Postgres.
+@event.listens_for(Engine, "connect")
+def _enable_sqlite_fks(dbapi_connection, _connection_record):
+    if dbapi_connection.__class__.__module__.startswith("sqlite3"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+
+SessionLocal = sessionmaker(
+    bind=engine,
+    autoflush=False,
+    autocommit=False,
+    expire_on_commit=False,
+    future=True,
+)
 
 
 def get_session() -> Iterator[Session]:
-    """FastAPI dependency yielding a request-scoped DB session."""
-    db = SessionLocal()
+    """FastAPI dependency: yield a session, close on teardown.
+
+    The view is responsible for committing (or letting service-layer code
+    commit). We deliberately do not auto-commit here so a partial failure
+    won't persist half-written state.
+    """
+
+    session = SessionLocal()
     try:
-        yield db
+        yield session
     finally:
-        db.close()
+        session.close()
 
 
 @contextmanager
 def session_scope() -> Iterator[Session]:
-    """Context manager for non-request code (workers, scripts, tests).
+    """Transactional context manager for scripts / background jobs.
 
     Commits on success, rolls back on exception, always closes.
     """
-    db = SessionLocal()
+
+    session = SessionLocal()
     try:
-        yield db
-        db.commit()
+        yield session
+        session.commit()
     except Exception:
-        db.rollback()
+        session.rollback()
         raise
     finally:
-        db.close()
+        session.close()
 
 
-def reset_engine(url: str) -> None:
-    """Re-bind the global engine + session factory to a different URL.
+def reset_engine(database_url: str | None = None) -> None:
+    """Rebuild the global engine + sessionmaker. Used by tests.
 
-    Used by tests to point at an in-memory SQLite DB.
+    Call this after setting ``DATABASE_URL`` for the test suite, e.g.::
+
+        os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+        reset_engine()
     """
-    global engine, SessionLocal
-    engine = _make_engine(url)
-    SessionLocal.configure(bind=engine)
+
+    global engine, SessionLocal, DATABASE_URL
+    DATABASE_URL = database_url or os.environ.get("DATABASE_URL", DATABASE_URL)
+    engine = _build_engine(DATABASE_URL)
+    SessionLocal = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+        future=True,
+    )
 
 
 def create_all() -> None:
-    """Create every table defined in :mod:`src.storage.models`.
+    """Create every table from the ORM metadata. Used for tests + bootstrap.
 
-    Convenience for tests + first-boot bootstrap when Alembic is not yet
-    set up on the target DB. In production we use Alembic instead.
+    Production uses Alembic migrations (``alembic upgrade head``).
     """
+
     Base.metadata.create_all(bind=engine)
 
 
-def utc_now_iso() -> str:
-    """ISO-8601 UTC timestamp string. Kept for callers that store text dates."""
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+def drop_all() -> None:
+    """Drop every table. Tests only."""
+
+    Base.metadata.drop_all(bind=engine)
