@@ -56,13 +56,19 @@ def list_view(
                 "best_score": r.get("top_score"),
             }
         )
+    # The runs/list.html template embeds the "New run" modal (runs/new.html),
+    # which iterates over ``locked_sets`` to populate its set picker. We must
+    # fetch them here for any authenticated user — locked sets are runnable
+    # regardless of who authored or reviewed them.
+    locked_sets = list_sets(session, status=SetStatus.LOCKED.value)
     return render(
         request,
         "runs/list.html",
         current_user=user,
         active_tab="results",
         runs=runs,
-        locked_sets=[],
+        locked_sets=locked_sets,
+        default_models=DEFAULT_MODELS,
         filters={"status": status or "", "q": q or ""},
     )
 
