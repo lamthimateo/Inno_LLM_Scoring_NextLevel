@@ -1,0 +1,36 @@
+{% extends "_base.html" %}
+{% block title %}Log in · Inno LLM Scoring{% endblock %}
+{% block page_slug %}auth-login{% endblock %}
+
+{% block content %}
+<section class="authcard card">
+  <h1 class="authcard__title">Log in</h1>
+  <p class="authcard__lede">Welcome back. Sign in to manage benchmark sets and runs.</p>
+
+  {% if error %}
+    <div class="flash flash--err">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/auth/login" class="form" autocomplete="on">
+    <input type="hidden" name="next" value="{{ next or '' }}" />
+
+    <label class="form__row">
+      <span class="form__label">Username</span>
+      <input class="form__input" name="username" type="text" autocomplete="username" required autofocus />
+    </label>
+
+    <label class="form__row">
+      <span class="form__label">Password</span>
+      <input class="form__input" name="password" type="password" autocomplete="current-password" required />
+    </label>
+
+    <button class="btn btn--primary btn--full" type="submit">Log in</button>
+  </form>
+
+  <div class="authcard__links">
+    <a href="/auth/forgot">Forgot password?</a>
+    <span aria-hidden="true">·</span>
+    <a href="/auth/signup">Create account</a>
+  </div>
+</section>
+{% endblock %}

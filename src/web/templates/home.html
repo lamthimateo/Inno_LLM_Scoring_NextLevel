@@ -1,0 +1,45 @@
+{% extends "_base.html" %}
+{% block title %}Dashboard · Inno LLM Scoring{% endblock %}
+{% block page_slug %}home{% endblock %}
+
+{% block content %}
+<section class="hero card">
+  <h1 class="hero__title">Welcome back, {{ current_user.username }}.</h1>
+  <p class="hero__lede">
+    Pick a tab above to start working. <strong>Questions</strong> is where you
+    import, review, and lock benchmark sets. <strong>Results</strong> shows the
+    leaderboard for every run you've executed.
+  </p>
+
+  <div class="hero__actions">
+    <a class="btn btn--primary" href="/questions">Open Questions →</a>
+    <a class="btn"             href="/results">Open Results →</a>
+  </div>
+</section>
+
+<section class="grid grid--3">
+  <article class="card">
+    <h2 class="card__title">Workflow</h2>
+    <ol class="steps">
+      <li><strong>Draft.</strong> Upload questions or write them in the UI.</li>
+      <li><strong>In review.</strong> Submit for a second pair of eyes.</li>
+      <li><strong>Approved.</strong> Reviewer (different person) signs off.</li>
+      <li><strong>Locked.</strong> Frozen — ready to run against models.</li>
+    </ol>
+  </article>
+
+  <article class="card">
+    <h2 class="card__title">Two-person rule</h2>
+    <p>The approver can never be the author. We enforce this at the database
+       and audit-log level so the rule survives even when someone clicks
+       fast.</p>
+  </article>
+
+  <article class="card">
+    <h2 class="card__title">Reproducibility</h2>
+    <p>Only locked sets can be evaluated. Every run keeps the raw model
+       output, provider metadata, parsed answers, and per-category scores
+       in Postgres for later diffing.</p>
+  </article>
+</section>
+{% endblock %}

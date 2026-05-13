@@ -327,6 +327,32 @@ class Aggregate(Base):
 
 
 # ---------------------------------------------------------------------------
+# Password reset tokens
+# ---------------------------------------------------------------------------
+
+
+class PasswordResetToken(Base):
+    """Single-use password reset tokens.
+
+    Email delivery is not wired in this build — the reset link is printed
+    to the server log when a request is made, which is enough for a school
+    demo and easy to wire to SMTP later.
+    """
+
+    __tablename__ = "password_reset_tokens"
+
+    token: Mapped[str] = mapped_column(String(120), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ---------------------------------------------------------------------------
 # Background jobs
 # ---------------------------------------------------------------------------
 

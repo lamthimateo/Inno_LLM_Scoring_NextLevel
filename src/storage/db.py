@@ -32,6 +32,7 @@ from typing import Iterator
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from .models import Base
 
@@ -43,17 +44,27 @@ DATABASE_URL = os.environ.get(
 
 
 def _build_engine(database_url: str) -> Engine:
-    """Build a SQLAlchemy engine with sane defaults for both Postgres and SQLite."""
+    """Build a SQLAlchemy engine with sane defaults for both Postgres and SQLite.
+
+    For SQLite, we disable ``check_same_thread`` so the engine can be shared
+    across FastAPI's threadpool, and pin in-memory DBs to a single
+    connection via ``StaticPool`` so tables persist across sessions within
+    the same engine (otherwise every connection gets a fresh empty DB).
+    """
 
     connect_args: dict = {}
+    extra: dict = {}
     if database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
+        if ":memory:" in database_url:
+            extra["poolclass"] = StaticPool
 
     return create_engine(
         database_url,
         future=True,
         pool_pre_ping=True,
         connect_args=connect_args,
+        **extra,
     )
 
 
