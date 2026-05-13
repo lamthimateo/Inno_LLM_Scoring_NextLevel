@@ -23,8 +23,9 @@
   function applyTheme(t) { document.documentElement.setAttribute("data-theme", t); }
   function initTheme() {
     const saved = localStorage.getItem(THEME_KEY);
-    const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const initial = saved || (prefersDark ? "dark" : "light");
+    // Default matches the boot script in base.html (light, the Claude /
+    // Anthropic warm-ivory aesthetic). Dark is opt-in via the toggle.
+    const initial = saved || "light";
     applyTheme(initial);
     document.addEventListener("click", function (e) {
       const btn = e.target.closest("[data-theme-toggle]");
