@@ -1,60 +1,141 @@
-{% extends "_base.html" %}
-{% block title %}New run · Inno LLM Scoring{% endblock %}
+{#
+  "New run" partial.
+  Two render modes:
+    - standalone page (block_content): rendered by GET /runs/new
+    - modal: included from runs/list.html as a modal partial
 
-{% block content %}
-<header class="pageheader">
-  <div class="pageheader__title">
-    <h1>Start a new evaluation run</h1>
-    <p>Pick a locked set and the models you want to compare.</p>
-  </div>
-  <div class="pageheader__actions">
-    <a class="btn btn--ghost" href="/runs">← Back to runs</a>
-  </div>
-</header>
+  Inputs:
+    - locked_sets: iterable of QuestionSetRow-like objects (.set_id, .title, .question_count)
+    - form: {"set_id": str, "model_ids_csv": str, "notes": str}
+    - error: optional string
+    - default_models: list of "provider:model" strings (CLI preset)
+#}
+{% if standalone_page or (locked_sets is defined and runs is not defined) %}
+  {% extends "base.html" %}
+  {% set active_tab = 'results' %}
+  {% block title %}Start a run · Inno LLM Scoring{% endblock %}
+  {% block content %}
+    <div class="page-header">
+      <div class="title">
+        <div class="row-tight mb-2">
+          <a href="{{ url_for('runs.list') }}" class="muted text-sm">← All runs</a>
+        </div>
+        <h1>Start a new benchmark run</h1>
+        <div class="sub">Pick a locked set and confirm the model preset.</div>
+      </div>
+    </div>
 
-{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+    {% if error %}
+      <div class="alert alert-error mb-4">
+        <div class="alert-body"><div>{{ error }}</div></div>
+      </div>
+    {% endif %}
 
-{% if not locked_sets %}
-<div class="card empty">
-  <h2 class="empty__title">No locked sets yet</h2>
-  <p class="empty__body">
-    Only locked sets can be evaluated. Take a draft through review and locking first.
-  </p>
-  <a class="btn btn--primary" href="/questions">Go to Questions →</a>
-</div>
+    {% if not locked_sets %}
+      <div class="card">
+        {% with empty_icon='play',
+                empty_title='No locked sets yet',
+                empty_body='Only locked sets can be evaluated. Take a draft through review and locking first.',
+                empty_cta_label='Go to Questions',
+                empty_cta_href=url_for('questions.list') %}
+          {% include "components/_empty_state.html" %}
+        {% endwith %}
+      </div>
+    {% else %}
+      <form method="post" action="{{ url_for('runs.create') }}" class="stack" style="max-width: 720px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+
+        <div class="card">
+          <div class="card-header"><h2>Run configuration</h2></div>
+
+          <div class="form-field">
+            <label for="set_id">Locked question set</label>
+            <select class="select" id="set_id" name="set_id" required>
+              <option value="" disabled {% if not (form and form.set_id) %}selected{% endif %}>— choose a set —</option>
+              {% for s in locked_sets %}
+                <option value="{{ s.set_id }}" {% if form and form.set_id == s.set_id %}selected{% endif %}>
+                  {{ s.title or s.set_id }} · {{ s.question_count }} questions
+                </option>
+              {% endfor %}
+            </select>
+            <div class="help">Only sets in status <b>locked</b> can be run.</div>
+          </div>
+
+          <div class="form-field">
+            <label for="model_ids_csv">Models <span class="muted fw-500">(one per line, format <code>provider:model</code>)</span></label>
+            <textarea class="textarea text-mono" id="model_ids_csv" name="model_ids_csv" rows="6" required>{{ form.model_ids_csv if form else '' }}</textarea>
+            <div class="help">
+              Default uses the 4-model OpenRouter preset (requires <code>OPENROUTER_API_KEY</code>).
+              You can also use <code>openai:&lt;model&gt;</code> for direct OpenAI (requires <code>OPENAI_API_KEY</code>).
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="notes">Notes <span class="muted fw-500">(optional)</span></label>
+            <input class="input" id="notes" name="notes" type="text"
+                   value="{{ form.notes if form else '' }}"
+                   placeholder="What is this run testing? e.g. 'Spring 2026 final report'">
+          </div>
+        </div>
+
+        <div class="alert alert-info">
+          <div class="alert-body">
+            <div class="alert-title">Heads up</div>
+            <div>Runs execute in the background. You can leave this page; progress is polled every 2 s on the run detail page.</div>
+          </div>
+        </div>
+
+        <div class="row" style="justify-content: space-between;">
+          <a class="btn btn-ghost" href="{{ url_for('runs.list') }}">Cancel</a>
+          <button class="btn btn-primary" type="submit">
+            <svg class="icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M6 4l10 6-10 6V4z" fill="currentColor"/>
+            </svg>
+            Start run
+          </button>
+        </div>
+      </form>
+    {% endif %}
+  {% endblock %}
 {% else %}
-<form method="post" action="/runs/new" class="card form form--wide">
-  <div class="form__row">
-    <span class="form__label">Question set</span>
-    <select class="form__select" name="set_id" required>
-      <option value="" disabled {% if not form.set_id %}selected{% endif %}>— pick a locked set —</option>
-      {% for s in locked_sets %}
-        <option value="{{ s.set_id }}" {% if form.set_id == s.set_id %}selected{% endif %}>
-          {{ s.title or s.set_id }} ({{ s.question_count }} questions)
-        </option>
-      {% endfor %}
-    </select>
-  </div>
+  {# Modal version, included by runs/list.html. #}
+  <div id="new-run-modal" class="modal-backdrop hidden" hidden role="dialog" aria-modal="true" aria-labelledby="new-run-title">
+    <div class="modal modal-lg" role="document">
+      <header class="modal-header">
+        <h2 id="new-run-title">Start a new benchmark run</h2>
+        <button type="button" class="modal-close" data-modal-close aria-label="Close">×</button>
+      </header>
 
-  <div class="form__row">
-    <span class="form__label">Models (one per line, format <code>provider:model</code>)</span>
-    <textarea class="form__textarea mono" name="model_ids_csv" rows="6" required>{{ form.model_ids_csv }}</textarea>
-    <small class="form__hint">
-      Default: 4 models via OpenRouter. Requires <code>OPENROUTER_API_KEY</code>.
-      You can also use <code>openai:&lt;model&gt;</code> for direct OpenAI calls
-      (requires <code>OPENAI_API_KEY</code>).
-    </small>
-  </div>
+      <form method="post" action="{{ url_for('runs.create') }}" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
 
-  <div class="form__row">
-    <span class="form__label">Notes <span class="form__optional">(optional)</span></span>
-    <input class="form__input" name="notes" value="{{ form.notes }}" placeholder="What is this run testing?" />
-  </div>
+        <div class="modal-body stack">
+          <div class="form-field">
+            <label for="set_id_modal">Locked question set</label>
+            <select class="select" id="set_id_modal" name="set_id" required>
+              <option value="" disabled selected>— choose a set —</option>
+              {% for s in locked_sets or [] %}
+                <option value="{{ s.set_id }}">{{ s.title or s.set_id }} · {{ s.question_count }} questions</option>
+              {% endfor %}
+            </select>
+          </div>
 
-  <div class="form__actions">
-    <a class="btn btn--ghost" href="/runs">Cancel</a>
-    <button class="btn btn--primary" type="submit">Start run →</button>
+          <div class="form-field">
+            <label for="model_ids_csv_modal">Models <span class="muted fw-500">(one per line, <code>provider:model</code>)</span></label>
+            <textarea class="textarea text-mono" id="model_ids_csv_modal" name="model_ids_csv" rows="5" required></textarea>
+          </div>
+
+          <div class="form-field">
+            <label for="notes_modal">Notes <span class="muted fw-500">(optional)</span></label>
+            <input class="input" id="notes_modal" name="notes" type="text" placeholder="What is this run for?">
+          </div>
+        </div>
+
+        <footer class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Start run</button>
+        </footer>
+      </form>
+    </div>
   </div>
-</form>
 {% endif %}
-{% endblock %}

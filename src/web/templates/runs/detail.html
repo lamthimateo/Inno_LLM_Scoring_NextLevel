@@ -1,39 +1,169 @@
-{% extends "_base.html" %}
-{% block title %}{{ run.run_id }} · Run · Inno LLM Scoring{% endblock %}
+{% extends "base.html" %}
+{% set active_tab = 'runs' %}
+{% block title %}Run {{ run.run_id }} · Inno LLM Scoring{% endblock %}
 
 {% block content %}
-<header class="pageheader">
-  <div class="pageheader__title">
-    <h1>Run <span class="mono">{{ run.run_id }}</span></h1>
-    <p>
-      Against set <a class="link" href="/questions/{{ run.set_id }}">{{ run.set_id }}</a>.
-      Started by {{ run.started_by_id and ('user #' + run.started_by_id | string) or 'system' }}.
-    </p>
-    {% if run.notes %}<p class="muted">{{ run.notes }}</p>{% endif %}
+<div class="page-header">
+  <div class="title">
+    <div class="row-tight mb-2">
+      <a href="{{ url_for('runs.list') }}" class="muted text-sm">← All runs</a>
+    </div>
+    <h1>Run <code class="kbd text-lg">{{ run.run_id }}</code></h1>
+    <div class="row-tight mt-2 muted text-sm">
+      {% with status=run.status %}{% include "components/_status_badge.html" %}{% endwith %}
+      <span>·</span>
+      <span>Set <a href="{{ url_for('questions.detail', set_id=run.set_id) }}">{{ run.set_title or run.set_id }}</a></span>
+      <span>·</span>
+      <span>Started by <b class="soft">{{ run.started_by }}</b></span>
+      <span>·</span>
+      <span>at <time datetime="{{ run.started_at }}">{{ run.started_at_human or run.started_at }}</time></span>
+    </div>
   </div>
-  <div class="pageheader__actions">
-    <a class="btn btn--ghost" href="/runs">← Back to runs</a>
+  <div class="actions">
+    {% if run.status == 'done' %}
+      <a class="btn btn-primary" href="{{ url_for('results.leaderboard', run_id=run.run_id) }}">Open leaderboard →</a>
+    {% elif run.status in ['queued','running'] %}
+      <form method="post" action="{{ url_for('runs.cancel', run_id=run.run_id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <button class="btn btn-danger" type="submit"
+                data-confirm="Cancel this run? Partial results will be preserved.">
+          Cancel run
+        </button>
+      </form>
+    {% endif %}
   </div>
-</header>
-
-{# Poll the status fragment every 2s until the job completes. #}
-<div id="run-status"
-     hx-get="/runs/{{ run.run_id }}/status"
-     hx-trigger="every 2s"
-     hx-swap="outerHTML"
-     hx-select="#run-status"
-     {% if job.status in ('done', 'error', 'cancelled') %}data-stopped="true"{% endif %}>
-  {% include "runs/_status_fragment.html" %}
 </div>
 
-<script>
-  // Stop polling once the run reaches a terminal state.
-  document.body.addEventListener("htmx:afterSettle", function (e) {
-    var el = document.getElementById("run-status");
-    if (el && el.dataset.stopped === "true") {
-      el.removeAttribute("hx-trigger");
-      el.removeAttribute("hx-get");
-    }
-  });
-</script>
+<div class="grid grid-content">
+  {# LEFT: per-model progress (auto-refresh while running) #}
+  <div class="stack"
+       {% if run.status in ['queued','running'] %}
+       hx-get="{{ url_for('runs.detail_fragment', run_id=run.run_id) }}"
+       hx-trigger="every 2s"
+       hx-target="this"
+       hx-select=".run-models"
+       hx-swap="outerHTML"
+       {% endif %}>
+
+    <div class="card run-models">
+      <div class="card-header">
+        <h3>Model progress</h3>
+        <span class="muted text-sm">
+          {% if run.status == 'running' %}
+            <span class="dot good" style="display:inline-block; animation: pulse 1.4s ease-in-out infinite; vertical-align: middle;"></span>
+            live · updates every 2 s
+          {% else %}
+            {{ run.status }}
+          {% endif %}
+        </span>
+      </div>
+
+      <div class="model-progress">
+        {% for m in run.model_runs %}
+          <div class="model-row">
+            <div class="m-name">
+              <span>{{ m.label or m.model_id }}</span>
+              <code class="kbd">{{ m.model_id }}</code>
+            </div>
+            <div class="progress {{ 'indeterminate' if m.status == 'running' and m.percent in [none, 0] else '' }}">
+              <div class="bar-fill" style="width: {{ (m.percent or (0 if m.status != 'done' else 100)) }}%;"></div>
+            </div>
+            <div class="m-pct">
+              {% if m.status == 'done' %}100%
+              {% elif m.percent is not none %}{{ m.percent }}%
+              {% else %}—{% endif %}
+            </div>
+            <div style="text-align:right;">
+              {% with status=m.status %}{% include "components/_status_badge.html" %}{% endwith %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Live aggregates (only after first answers come in) #}
+    {% if run.partial_aggregates %}
+      <div class="card">
+        <div class="card-header">
+          <h3>Live aggregates</h3>
+          <span class="muted text-sm">snapshot · refreshed with the page</span>
+        </div>
+        <div class="table-wrap" style="box-shadow: none; border: 1px solid var(--border);">
+          <table class="table compact">
+            <thead>
+              <tr>
+                <th>Model</th><th class="num">Total</th>
+                <th class="num">Correct</th><th class="num">Wrong</th><th class="num">Blank</th>
+                <th class="num">Format violations</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in run.partial_aggregates %}
+              <tr>
+                <td>{{ a.model_id }}</td>
+                <td class="num">
+                  <span class="score-tag">
+                    <span class="dot {{ 'good' if a.total >= 0 else 'bad' }}"></span> {{ a.total }}
+                  </span>
+                </td>
+                <td class="num">{{ a.correct }}</td>
+                <td class="num">{{ a.wrong }}</td>
+                <td class="num">{{ a.blank }}</td>
+                <td class="num">{{ a.format_violations }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endif %}
+
+    {# Errors panel — only if any model errored #}
+    {% set errored = run.model_runs | selectattr('status','equalto','error') | list %}
+    {% if errored %}
+      <div class="card">
+        <div class="card-header"><h3 class="danger">Errors</h3></div>
+        <div class="stack-tight">
+          {% for m in errored %}
+            <div class="alert alert-error">
+              <div class="alert-body">
+                <div class="alert-title">{{ m.model_id }}</div>
+                <div class="muted">{{ m.error_message or 'Unknown error.' }}</div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {# RIGHT: meta #}
+  <aside class="stack">
+    <div class="card">
+      <div class="card-header"><h3>Run details</h3></div>
+      <div class="stack-tight text-sm">
+        <div class="spread"><span class="muted">Run ID</span> <code class="text-mono">{{ run.run_id }}</code></div>
+        <div class="spread"><span class="muted">Set</span> <code class="text-mono">{{ run.set_id }}</code></div>
+        <div class="spread"><span class="muted">Prompt policy</span> <code class="text-mono">{{ run.prompt_policy or 'strict_format_v1' }}</code></div>
+        <div class="spread"><span class="muted">Started</span> <span>{{ run.started_at_human or run.started_at }}</span></div>
+        {% if run.finished_at %}
+          <div class="spread"><span class="muted">Finished</span> <span>{{ run.finished_at_human or run.finished_at }}</span></div>
+        {% endif %}
+        {% if run.notes %}
+          <div class="divider"></div>
+          <div class="muted">{{ run.notes }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>Scoring rule</h3></div>
+      <ul class="stack-tight text-sm" style="list-style: none; padding: 0; margin: 0;">
+        <li class="spread"><span>Correct</span> <span class="badge badge-done">+1</span></li>
+        <li class="spread"><span>Blank</span>   <span class="badge">0</span></li>
+        <li class="spread"><span>Wrong</span>   <span class="badge badge-error">−10</span></li>
+      </ul>
+    </div>
+  </aside>
+</div>
 {% endblock %}

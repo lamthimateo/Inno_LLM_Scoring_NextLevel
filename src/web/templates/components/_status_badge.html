@@ -1,0 +1,23 @@
+{#
+  Renders a workflow / run status badge.
+  Usage: {% with status='draft' %}{% include "components/_status_badge.html" %}{% endwith %}
+  Accepts:
+    - status: draft | in_review | approved | locked | queued | running | done | error
+    - status_label (optional override)
+#}
+{% set _map = {
+  'draft':     ('draft',     'Draft'),
+  'in_review': ('review',    'In review'),
+  'approved':  ('approved',  'Approved'),
+  'locked':    ('locked',    'Locked'),
+  'queued':    ('queued',    'Queued'),
+  'running':   ('running',   'Running'),
+  'done':      ('done',      'Done'),
+  'error':     ('error',     'Error'),
+  'failed':    ('error',     'Failed'),
+} %}
+{% set _entry = _map.get(status, ('draft', status)) %}
+<span class="badge badge-{{ _entry[0] }}" title="{{ _entry[1] }}">
+  <span class="dot" aria-hidden="true"></span>
+  {{ status_label or _entry[1] }}
+</span>

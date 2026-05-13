@@ -1,45 +1,48 @@
-{% extends "_base.html" %}
+{% extends "base.html" %}
 {% block title %}Dashboard · Inno LLM Scoring{% endblock %}
-{% block page_slug %}home{% endblock %}
 
 {% block content %}
-<section class="hero card">
-  <h1 class="hero__title">Welcome back, {{ current_user.username }}.</h1>
-  <p class="hero__lede">
-    Pick a tab above to start working. <strong>Questions</strong> is where you
-    import, review, and lock benchmark sets. <strong>Results</strong> shows the
-    leaderboard for every run you've executed.
-  </p>
-
-  <div class="hero__actions">
-    <a class="btn btn--primary" href="/questions">Open Questions →</a>
-    <a class="btn"             href="/results">Open Results →</a>
+<div class="page-header">
+  <div class="title">
+    <h1>Welcome back, {{ current_user.username }}.</h1>
+    <div class="sub">
+      Pick a tab above to start working. <strong>Questions</strong> is where you
+      import, review, and lock benchmark sets. <strong>Results</strong> shows the
+      leaderboard for every run you've executed.
+    </div>
   </div>
-</section>
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ url_for('questions.list') }}">Open Questions →</a>
+    <a class="btn" href="{{ url_for('runs.list') }}">Open Results →</a>
+  </div>
+</div>
 
-<section class="grid grid--3">
+<div class="grid grid-3">
   <article class="card">
-    <h2 class="card__title">Workflow</h2>
-    <ol class="steps">
-      <li><strong>Draft.</strong> Upload questions or write them in the UI.</li>
-      <li><strong>In review.</strong> Submit for a second pair of eyes.</li>
-      <li><strong>Approved.</strong> Reviewer (different person) signs off.</li>
-      <li><strong>Locked.</strong> Frozen — ready to run against models.</li>
+    <div class="card-header"><h2>Workflow</h2></div>
+    <ol class="stack-tight" style="margin: 0; padding-left: 1.2em;">
+      <li><b>Draft.</b> Upload questions or write them in the UI.</li>
+      <li><b>In review.</b> Submit for a second pair of eyes.</li>
+      <li><b>Approved.</b> Reviewer (different person) signs off.</li>
+      <li><b>Locked.</b> Frozen — ready to run against models.</li>
     </ol>
   </article>
 
   <article class="card">
-    <h2 class="card__title">Two-person rule</h2>
-    <p>The approver can never be the author. We enforce this at the database
-       and audit-log level so the rule survives even when someone clicks
-       fast.</p>
+    <div class="card-header"><h2>Two-person rule</h2></div>
+    <p class="muted">
+      The approver can never be the author. We enforce this at the database
+      and audit-log level so the rule survives even when someone clicks fast.
+    </p>
   </article>
 
   <article class="card">
-    <h2 class="card__title">Reproducibility</h2>
-    <p>Only locked sets can be evaluated. Every run keeps the raw model
-       output, provider metadata, parsed answers, and per-category scores
-       in Postgres for later diffing.</p>
+    <div class="card-header"><h2>Reproducibility</h2></div>
+    <p class="muted">
+      Only locked sets can be evaluated. Every run keeps the raw model output,
+      provider metadata, parsed answers, and per-category scores in Postgres
+      for later diffing.
+    </p>
   </article>
-</section>
+</div>
 {% endblock %}

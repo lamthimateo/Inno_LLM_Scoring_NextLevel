@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}500 · Server error · Inno LLM Scoring{% endblock %}
+
+{% block content %}
+<div class="empty" style="padding: var(--space-10) var(--space-5);">
+  <div class="text-mono" style="font-size: 56px; letter-spacing: -0.04em; color: var(--bad);">
+    500
+  </div>
+  <h2>Something went wrong on our side</h2>
+  <p class="muted">An unexpected error occurred. The team has been notified. Try again in a minute.</p>
+  <div class="row mt-3">
+    <a class="btn btn-primary" href="{{ url_for('home') if current_user else url_for('login') }}">Go home</a>
+    <button class="btn btn-ghost" onclick="window.location.reload();">Retry</button>
+  </div>
+  {% if request_id %}
+    <div class="muted text-sm mt-4">
+      Reference: <code class="kbd" data-copy="{{ request_id }}">{{ request_id }}</code>
+      <span class="muted">(click to copy)</span>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

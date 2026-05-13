@@ -1,117 +1,253 @@
-{% extends "_base.html" %}
-{% block title %}{{ qs.title or qs.set_id }} · Questions{% endblock %}
+{% extends "base.html" %}
+{% set active_tab = 'questions' %}
+{% block title %}{{ set.title }} · Question set{% endblock %}
 
 {% block content %}
-<header class="pageheader">
-  <div class="pageheader__title">
-    <div class="row">
-      <h1>{{ qs.title or qs.set_id }}</h1>
-      <span class="pill pill--{{ qs.status }}">{{ qs.status.replace('_', ' ') }}</span>
+
+{# ---------- Header ---------- #}
+<div class="page-header">
+  <div class="title">
+    <div class="row-tight mb-2">
+      <a href="{{ url_for('questions.list') }}" class="muted text-sm">← All sets</a>
     </div>
-    <p class="mono muted">{{ qs.set_id }}</p>
-    {% if qs.description %}<p>{{ qs.description }}</p>{% endif %}
+    <h1>{{ set.title }}</h1>
+    <div class="row-tight mt-2">
+      <code class="kbd">{{ set.set_id }}</code>
+      {% with status=set.status %}{% include "components/_status_badge.html" %}{% endwith %}
+      <span class="muted text-sm">·</span>
+      <span class="muted text-sm">Author <b class="soft">{{ set.author or '—' }}</b></span>
+      <span class="muted text-sm">·</span>
+      <span class="muted text-sm">Reviewer <b class="soft">{{ set.reviewer or '—' }}</b></span>
+      <span class="muted text-sm">·</span>
+      <span class="muted text-sm">Updated <time datetime="{{ set.updated_at }}">{{ set.updated_at_human or set.updated_at }}</time></span>
+    </div>
   </div>
-  <div class="pageheader__actions">
-    <a class="btn btn--ghost" href="/questions">← Back</a>
-    {% if can_edit %}
-      <a class="btn" href="/questions/{{ qs.set_id }}/edit">Edit metadata</a>
+
+  <div class="actions">
+    {# Status-aware primary action ladder #}
+    {% if set.status == 'draft' and (current_user.username == set.author or current_user.role == 'admin') %}
+      <form method="post" action="{{ url_for('questions.submit_review', set_id=set.set_id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <button class="btn btn-primary" type="submit">Submit for review</button>
+      </form>
+    {% elif set.status == 'in_review' and current_user.role in ['reviewer','admin'] and current_user.username != set.author %}
+      <form method="post" action="{{ url_for('questions.approve', set_id=set.set_id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <button class="btn btn-primary"
+                data-confirm="Approve this set? The author cannot approve their own set."
+                type="submit">Approve</button>
+      </form>
+    {% elif set.status == 'approved' and current_user.role in ['reviewer','admin'] %}
+      <form method="post" action="{{ url_for('questions.lock', set_id=set.set_id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <button class="btn btn-primary"
+                data-confirm="Lock this set? Locked sets are frozen and used by all subsequent runs."
+                type="submit">Lock</button>
+      </form>
+    {% elif set.status == 'locked' %}
+      <a class="btn btn-primary" href="{{ url_for('runs.new', set_id=set.set_id) }}">Start a run →</a>
+    {% endif %}
+
+    {% if set.status == 'draft' and (current_user.username == set.author or current_user.role == 'admin') %}
+      <a class="btn" href="{{ url_for('questions.edit', set_id=set.set_id) }}">Edit questions</a>
     {% endif %}
   </div>
-</header>
-
-<div class="grid grid--3">
-  <article class="card stat">
-    <span class="stat__label">Questions</span>
-    <strong class="stat__value">{{ questions | length }}</strong>
-  </article>
-  <article class="card stat">
-    <span class="stat__label">Author</span>
-    <strong class="stat__value">{{ qs.author.username if qs.author else '—' }}</strong>
-  </article>
-  <article class="card stat">
-    <span class="stat__label">Reviewer</span>
-    <strong class="stat__value">{{ qs.reviewer.username if qs.reviewer else '—' }}</strong>
-  </article>
 </div>
 
-{# ---- Workflow actions card ---- #}
-<section class="card workflow">
-  <h2 class="card__title">Workflow</h2>
+<div class="grid grid-content">
+  {# ----------- LEFT: tabbed content ----------- #}
+  <div class="stack">
+    <div class="tabs" role="tablist" aria-label="Section">
+      {% set sections = [('questions','Questions'), ('history','History'), ('audit','Audit log')] %}
+      {% for key, label in sections %}
+        <a class="tab {{ 'active' if (section or 'questions') == key else '' }}"
+           role="tab" aria-selected="{{ 'true' if (section or 'questions') == key else 'false' }}"
+           href="{{ url_for('questions.detail', set_id=set.set_id, section=key) }}">{{ label }}</a>
+      {% endfor %}
+    </div>
 
-  {% if can_submit %}
-    <form method="post" action="/questions/{{ qs.set_id }}/submit-review" class="form form--inline">
-      <span class="form__label">Reviewer ID</span>
-      <input class="form__input form__input--small" type="number" name="reviewer_id" min="1" placeholder="user id" required />
-      <button class="btn btn--primary" type="submit">Submit for review →</button>
-      <small class="form__hint">Reviewer must be a different user than the author.</small>
-    </form>
-  {% endif %}
+    {# ---- Questions sub-view ---- #}
+    {% if (section or 'questions') == 'questions' %}
+      <div class="stack">
+        <div class="row">
+          <div class="field">
+            <small>Filter</small>
+            <input type="search" placeholder="filter QID or text…"
+                   hx-get="{{ url_for('questions.detail', set_id=set.set_id, section='questions') }}"
+                   hx-trigger="input changed delay:250ms"
+                   hx-target="#q-list"
+                   hx-select="#q-list"
+                   name="qf">
+          </div>
+          <div class="chips" role="tablist" aria-label="Category filter">
+            {% set cats = [('C','Chem'),('E','Emot'),('M','Math'),('A','3D'),('N','NoK'),('X','Contr')] %}
+            {% for prefix, label in cats %}
+              <a class="chip interactive" href="?section=questions&cat={{ prefix }}">
+                <span class="cat cat-{{ prefix }}">{{ prefix }}</span> {{ label }}
+              </a>
+            {% endfor %}
+          </div>
+        </div>
 
-  {% if can_approve %}
-    <form method="post" action="/questions/{{ qs.set_id }}/approve" class="form form--inline">
-      <button class="btn btn--primary" type="submit">Approve →</button>
-      <small class="form__hint">You are signing off as reviewer.</small>
-    </form>
-  {% endif %}
+        <ul class="q-list" id="q-list">
+          {% if questions %}
+            {% for q in questions %}
+              <details class="q-item">
+                <summary>
+                  <span class="qid">{{ q.qid }}</span>
+                  <span class="cat cat-{{ q.qid[:1] }}">{{ q.qid[:1] }}</span>
+                  <span class="q-prompt">{{ q.prompt }}</span>
+                  {% if can_view_answers %}
+                    <span class="badge">{{ q.correct_answer }}</span>
+                  {% endif %}
+                </summary>
+                <div class="q-body">
+                  <div class="q-choices">
+                    {% for letter, text in q.choices.items() %}
+                      <div class="q-choice {{ 'correct' if can_view_answers and letter == q.correct_answer else '' }}">
+                        <span class="letter">{{ letter }}</span>
+                        <span>{{ text }}</span>
+                      </div>
+                    {% endfor %}
+                  </div>
+                  <div class="row-tight mt-3">
+                    {% if set.status == 'draft' and (current_user.username == set.author or current_user.role == 'admin') %}
+                      <a class="btn btn-sm" href="{{ url_for('questions.edit_one', set_id=set.set_id, qid=q.qid) }}">Edit</a>
+                    {% endif %}
+                    {% if q.versions and q.versions|length > 1 %}
+                      <a class="btn btn-sm btn-ghost" href="{{ url_for('questions.diff', set_id=set.set_id, qid=q.qid) }}">{{ q.versions|length }} versions →</a>
+                    {% endif %}
+                  </div>
+                </div>
+              </details>
+            {% endfor %}
+          {% else %}
+            {% with empty_icon='flask', empty_title='No questions in this set' %}
+              {% include "components/_empty_state.html" %}
+            {% endwith %}
+          {% endif %}
+        </ul>
+      </div>
+    {% endif %}
 
-  {% if can_lock %}
-    <form method="post" action="/questions/{{ qs.set_id }}/lock" class="form form--inline">
-      <button class="btn btn--primary" type="submit">Lock for evaluation →</button>
-      <small class="form__hint">Once locked, no further edits are possible.</small>
-    </form>
-  {% endif %}
-
-  {% if can_revert %}
-    <form method="post" action="/questions/{{ qs.set_id }}/revert" class="form form--inline">
-      <input class="form__input form__input--small" type="text" name="reason" placeholder="reason (optional)" />
-      <button class="btn btn--ghost" type="submit">Revert to draft</button>
-    </form>
-  {% endif %}
-
-  {% if not (can_submit or can_approve or can_lock or can_revert) %}
-    <p class="muted">No actions available to you in the current state.</p>
-  {% endif %}
-</section>
-
-{# ---- Questions table ---- #}
-<section class="card">
-  <h2 class="card__title">Questions ({{ questions | length }})</h2>
-
-  {% if counts_by_cat %}
-  <div class="chips chips--read">
-    {% for cat, n in counts_by_cat.items() %}
-      <span class="chip"><strong>{{ cat }}</strong><span class="chip__count">{{ n }}</span></span>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  <div class="table-wrap">
-    <table class="table">
-      <thead>
-        <tr>
-          <th>QID</th>
-          <th>Category</th>
-          <th>Prompt</th>
-          <th>Correct</th>
-          <th>Version</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for q in questions %}
-        <tr>
-          <td class="mono">{{ q.qid }}</td>
-          <td>{{ q.category }}</td>
-          <td class="truncate">{{ q.prompt }}</td>
-          <td class="mono">{{ q.correct_answer or '—' }}</td>
-          <td class="mono">v{{ q.version }}</td>
-          <td><a class="btn btn--ghost btn--sm" href="/questions/{{ qs.set_id }}/{{ q.qid }}">View</a></td>
-        </tr>
+    {# ---- History sub-view ---- #}
+    {% if section == 'history' %}
+      <div class="card">
+        <div class="card-header"><h3>Edit history</h3><span class="muted text-sm">Latest first</span></div>
+        {% if history %}
+          <div class="stack">
+            {% for h in history %}
+              <div class="card card-tight">
+                <div class="spread mb-2">
+                  <div class="row-tight">
+                    <code class="kbd">{{ h.qid }}</code>
+                    <span class="muted text-sm">v{{ h.version }}</span>
+                  </div>
+                  <div class="row-tight">
+                    <span class="muted text-sm">{{ h.author }} · <time>{{ h.changed_at_human or h.changed_at }}</time></span>
+                    <a class="btn btn-sm" href="{{ url_for('questions.diff', set_id=set.set_id, qid=h.qid, v=h.version) }}">Diff</a>
+                  </div>
+                </div>
+                {% if h.summary %}<div class="muted text-sm">{{ h.summary }}</div>{% endif %}
+              </div>
+            {% endfor %}
+          </div>
         {% else %}
-        <tr><td colspan="6" class="muted">No questions in this set.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+          <p class="muted">No edits recorded.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {# ---- Audit log sub-view ---- #}
+    {% if section == 'audit' %}
+      <div class="card">
+        <div class="card-header"><h3>Audit log</h3></div>
+        {% if audit %}
+          <div class="table-wrap">
+            <div class="table-scroll">
+              <table class="table compact">
+                <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Detail</th></tr></thead>
+                <tbody>
+                  {% for a in audit %}
+                  <tr>
+                    <td class="text-mono text-sm">{{ a.at_human or a.at }}</td>
+                    <td>{{ a.actor }}</td>
+                    <td><span class="badge">{{ a.action }}</span></td>
+                    <td class="muted">{{ a.detail }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {% else %}
+          <p class="muted">No audit entries.</p>
+        {% endif %}
+      </div>
+    {% endif %}
   </div>
-</section>
+
+  {# ----------- RIGHT: validation panel + meta ----------- #}
+  <aside class="stack">
+    <div class="card"
+         hx-get="{{ url_for('questions.validate', set_id=set.set_id) }}"
+         hx-trigger="load, every 30s, set:revalidated from:body"
+         hx-target="this"
+         hx-select=".validation-content">
+      <div class="card-header">
+        <h3>Validation</h3>
+        <span class="muted text-sm htmx-indicator">checking…</span>
+      </div>
+      <div class="validation-content">
+        {% if validation %}
+          <ul class="validation-list">
+            {% for check in validation %}
+              <li class="v-{{ check.level }}">
+                <svg class="v-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  {% if check.level == 'pass' %}
+                  <path d="M5 10l3.5 3.5L15 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  {% elif check.level == 'warn' %}
+                  <path d="M10 3l8 14H2l8-14z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                  <path d="M10 9v3M10 15v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  {% else %}
+                  <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/>
+                  <path d="M7 7l6 6M13 7l-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  {% endif %}
+                </svg>
+                <div>
+                  <div class="fw-600">{{ check.title }}</div>
+                  {% if check.detail %}<div class="v-detail">{{ check.detail }}</div>{% endif %}
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="muted text-sm">No checks have run yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>Set details</h3></div>
+      <div class="stack-tight text-sm">
+        <div class="spread"><span class="muted">ID</span> <code class="text-mono">{{ set.set_id }}</code></div>
+        <div class="spread"><span class="muted">Questions</span> <b>{{ set.question_count }}</b></div>
+        <div class="spread"><span class="muted">Created</span> <span>{{ set.created_at_human or set.created_at }}</span></div>
+        <div class="spread"><span class="muted">Updated</span> <span>{{ set.updated_at_human or set.updated_at }}</span></div>
+        {% if set.description %}
+          <div class="divider"></div>
+          <div class="muted">{{ set.description }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if set.status == 'locked' %}
+      <div class="card">
+        <div class="card-header"><h3>Next action</h3></div>
+        <p class="muted text-sm mb-3">This set is locked — ready to benchmark.</p>
+        <a class="btn btn-primary btn-block" href="{{ url_for('runs.new', set_id=set.set_id) }}">Start a run</a>
+      </div>
+    {% endif %}
+  </aside>
+</div>
 {% endblock %}

@@ -128,6 +128,13 @@ def list_view(
         counts=counts,
         filter_status=status or "",
         filter_search=q or "",
+        # Aliases expected by the design-system templates:
+        filters={"status": status or "", "q": q or ""},
+        sets_count_total=counts.get("total", 0),
+        sets_count_draft=counts.get("draft", 0),
+        sets_count_review=counts.get("in_review", 0),
+        sets_count_approved=counts.get("approved", 0),
+        sets_count_locked=counts.get("locked", 0),
     )
 
 
@@ -235,6 +242,9 @@ def detail(
     counts_by_cat: dict[str, int] = {}
     for q in questions:
         counts_by_cat[q.category] = counts_by_cat.get(q.category, 0) + 1
+        # The polished detail template iterates ``q.choices.items()`` —
+        # adapt our ORM list-of-dicts to the {letter: text} dict it wants.
+        q.choices = {c["label"]: c["text"] for c in (q.choices_json or [])}
 
     return render(
         request,
@@ -242,8 +252,10 @@ def detail(
         current_user=user,
         active_tab="questions",
         qs=qs,
+        set=qs,  # alias for the design-system templates
         questions=questions,
         counts_by_cat=counts_by_cat,
+        can_view_answers=True,
         can_edit=(
             qs.status in (SetStatus.DRAFT.value, SetStatus.IN_REVIEW.value)
             and (_is_author_of(user, qs) or _is_admin(user))
@@ -294,6 +306,7 @@ def edit_metadata_form(
         current_user=user,
         active_tab="questions",
         qs=qs,
+        set=qs,
         error=None,
     )
 
@@ -343,13 +356,21 @@ def question_detail(
         _is_author_of(user, qs) or _is_admin(user)
     )
 
+    # The design-system template uses ``question.choices`` as a {letter: text}
+    # dict and ``question.versions`` for the diff CTA. Attach both onto the
+    # ORM object so the template doesn't have to know about choices_json.
+    q.choices = {c["label"]: c["text"] for c in (q.choices_json or [])}
+    q.versions = versions
+
     return render(
         request,
-        "questions/question_detail.html",
+        "questions/edit.html",
         current_user=user,
         active_tab="questions",
         qs=qs,
         q=q,
+        set=qs,
+        question=q,
         versions=versions,
         can_edit=can_edit,
         error=None,

@@ -1,55 +1,113 @@
-{% extends "_base.html" %}
+{% extends "base.html" %}
+{% set active_tab = 'runs' %}
 {% block title %}Runs · Inno LLM Scoring{% endblock %}
 
 {% block content %}
-<header class="pageheader">
-  <div class="pageheader__title">
-    <h1>Runs</h1>
-    <p>Evaluations of locked question sets against one or more models.</p>
+<div class="page-header">
+  <div class="title">
+    <h1>Benchmark runs</h1>
+    <div class="sub">Every execution of a locked set against the 4-model preset.</div>
   </div>
-  <div class="pageheader__actions">
-    <a class="btn btn--primary" href="/runs/new">+ New run</a>
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-modal-target="#new-run-modal">
+      <svg class="icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M6 4l10 6-10 6V4z" fill="currentColor"/>
+      </svg>
+      New run
+    </button>
   </div>
-</header>
+</div>
 
-{% if runs %}
-<div class="table-wrap card">
-  <table class="table">
-    <thead>
-      <tr>
-        <th>Run ID</th>
-        <th>Set</th>
-        <th>Status</th>
-        <th>Progress</th>
-        <th class="num">Models</th>
-        <th class="num">Top score</th>
-        <th>Started by</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in runs %}
-      <tr>
-        <td><a class="link link--strong mono" href="/runs/{{ r.run_id }}">{{ r.run_id }}</a></td>
-        <td class="mono">{{ r.set_id }}</td>
-        <td><span class="pill pill--{{ r.status or 'queued' }}">{{ (r.status or 'queued').replace('_', ' ') }}</span></td>
-        <td class="mono">{{ r.progress_done or 0 }} / {{ r.progress_total or 0 }}</td>
-        <td class="num">{{ r.model_runs or 0 }}</td>
-        <td class="num">{{ r.top_score or 0 }}</td>
-        <td>{{ r.started_by_username or '—' }}</td>
-        <td class="muted small">{{ r.created_at | string | replace('+00:00', '') | replace('T', ' ') | truncate(19, True, '') }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="toolbar">
+  <div class="field">
+    <small>Search</small>
+    <input type="search" name="q" placeholder="Filter by run_id, set, model…"
+           value="{{ filters.q or '' }}"
+           hx-get="{{ url_for('runs.list') }}" hx-trigger="input changed delay:300ms"
+           hx-target="#runs-table" hx-select="#runs-table" hx-push-url="true">
+  </div>
+
+  <div class="chips" role="tablist" aria-label="Status filter">
+    {% set status_options = [('','All'), ('queued','Queued'), ('running','Running'), ('done','Done'), ('error','Error')] %}
+    {% for value, label in status_options %}
+      <a class="chip interactive {{ 'active' if filters.status == value else '' }}"
+         href="{{ url_for('runs.list', status=value, q=filters.q) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="flex-1"></div>
+  <span class="muted text-sm">{{ runs|length }} run{{ '' if runs|length == 1 else 's' }}</span>
 </div>
-{% else %}
-<div class="empty card">
-  <h2 class="empty__title">No runs yet</h2>
-  <p class="empty__body">
-    Lock a question set, then start a run to evaluate it against four models.
-  </p>
-  <a class="btn btn--primary" href="/runs/new">+ New run</a>
+
+<div id="runs-table" class="table-wrap">
+  {% if runs %}
+    <div class="table-scroll">
+      <table class="table sortable">
+        <thead>
+          <tr>
+            <th data-sort="string">Run</th>
+            <th data-sort="string">Set</th>
+            <th>Models</th>
+            <th data-sort="string">Status</th>
+            <th data-sort="string">Started by</th>
+            <th data-sort="date">Started</th>
+            <th data-sort="number" class="num">Best score</th>
+            <th class="actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in runs %}
+          <tr>
+            <td>
+              <a class="fw-600 text-mono" href="{{ url_for('runs.detail', run_id=r.run_id) }}">{{ r.run_id }}</a>
+            </td>
+            <td>
+              <a href="{{ url_for('questions.detail', set_id=r.set_id) }}">{{ r.set_title or r.set_id }}</a>
+            </td>
+            <td>
+              <div class="row-tight">
+                {% for m in r.models %}
+                  <span class="chip" title="{{ m }}">{{ m }}</span>
+                {% endfor %}
+              </div>
+            </td>
+            <td>
+              {% with status=r.status %}{% include "components/_status_badge.html" %}{% endwith %}
+            </td>
+            <td>{{ r.started_by }}</td>
+            <td data-value="{{ r.started_at }}">
+              <time datetime="{{ r.started_at }}">{{ r.started_at_human or r.started_at }}</time>
+            </td>
+            <td class="num" data-value="{{ r.best_score or 0 }}">
+              {% if r.best_score is not none %}
+                <span class="score-tag">
+                  <span class="dot {{ 'good' if r.best_score >= 0 else 'bad' }}"></span>
+                  {{ r.best_score }}
+                </span>
+              {% else %}<span class="muted">—</span>{% endif %}
+            </td>
+            <td class="actions">
+              <a class="btn btn-sm" href="{{ url_for('runs.detail', run_id=r.run_id) }}">Open</a>
+              {% if r.status == 'done' %}
+                <a class="btn btn-sm" href="{{ url_for('results.leaderboard', run_id=r.run_id) }}">Leaderboard</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    {% with empty_icon='play',
+            empty_title='No runs yet',
+            empty_body='Lock a question set, then kick off your first benchmark.',
+            empty_cta_label='Browse question sets',
+            empty_cta_href=url_for('questions.list') %}
+      {% include "components/_empty_state.html" %}
+    {% endwith %}
+  {% endif %}
 </div>
-{% endif %}
+
+{# Modal: new run — included as a partial #}
+{% include "runs/new.html" %}
 {% endblock %}

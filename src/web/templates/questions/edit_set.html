@@ -1,31 +1,47 @@
-{% extends "_base.html" %}
-{% block title %}Edit {{ qs.title or qs.set_id }} · Questions{% endblock %}
+{% extends "base.html" %}
+{% set active_tab = 'questions' %}
+{% block title %}Edit {{ set.title or set.set_id }} · Questions{% endblock %}
 
 {% block content %}
-<header class="pageheader">
-  <div class="pageheader__title">
+<div class="page-header">
+  <div class="title">
+    <div class="row-tight mb-2">
+      <a href="{{ url_for('questions.detail', set_id=set.set_id) }}" class="muted text-sm">← {{ set.title or set.set_id }}</a>
+    </div>
     <h1>Edit set metadata</h1>
-    <p class="mono muted">{{ qs.set_id }}</p>
+    <div class="row-tight mt-2 muted text-sm">
+      <code class="kbd">{{ set.set_id }}</code>
+      {% with status=set.status %}{% include "components/_status_badge.html" %}{% endwith %}
+    </div>
   </div>
-  <div class="pageheader__actions">
-    <a class="btn btn--ghost" href="/questions/{{ qs.set_id }}">← Back to detail</a>
-  </div>
-</header>
+</div>
 
-{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+{% if error %}
+  <div class="alert alert-error mb-4">
+    <div class="alert-body"><div>{{ error }}</div></div>
+  </div>
+{% endif %}
 
-<form method="post" action="/questions/{{ qs.set_id }}/edit" class="card form form--wide">
-  <div class="form__row">
-    <span class="form__label">Title</span>
-    <input class="form__input" name="title" value="{{ qs.title or '' }}" />
+<form method="post" action="{{ url_for('questions.edit', set_id=set.set_id) }}" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+
+  <div class="card">
+    <div class="card-header"><h2>Metadata</h2></div>
+
+    <div class="form-field">
+      <label for="title">Title</label>
+      <input class="input" id="title" name="title" type="text" value="{{ set.title or '' }}">
+    </div>
+
+    <div class="form-field">
+      <label for="description">Description</label>
+      <textarea class="textarea" id="description" name="description" rows="4">{{ set.description or '' }}</textarea>
+    </div>
   </div>
-  <div class="form__row">
-    <span class="form__label">Description</span>
-    <textarea class="form__textarea" name="description">{{ qs.description or '' }}</textarea>
-  </div>
-  <div class="form__actions">
-    <a class="btn btn--ghost" href="/questions/{{ qs.set_id }}">Cancel</a>
-    <button class="btn btn--primary" type="submit">Save</button>
+
+  <div class="row" style="justify-content: flex-end;">
+    <a class="btn btn-ghost" href="{{ url_for('questions.detail', set_id=set.set_id) }}">Cancel</a>
+    <button class="btn btn-primary" type="submit">Save</button>
   </div>
 </form>
 {% endblock %}

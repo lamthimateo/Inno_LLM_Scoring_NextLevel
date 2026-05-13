@@ -135,10 +135,10 @@ def test_full_flow_end_to_end():
             # fragment until done.
             for _ in range(50):
                 r = client.get(f"/runs/{run_id}/status")
-                if "pill--done" in r.text or "pill--error" in r.text:
+                if "badge-done" in r.text or "badge-error" in r.text:
                     break
                 time.sleep(0.05)
-            assert "pill--done" in r.text, r.text[:500]
+            assert "badge-done" in r.text, r.text[:500]
             # Both models scored full 2 points (2 correct, 0 wrong).
             assert "good:m1" in r.text
             assert "good:m2" in r.text

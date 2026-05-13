@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% set active_tab = 'questions' %}
+{% block title %}Diff {{ qid }} · {{ set.title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="title">
+    <div class="row-tight mb-2">
+      <a href="{{ url_for('questions.detail', set_id=set.set_id) }}" class="muted text-sm">← {{ set.title }}</a>
+    </div>
+    <h1>Diff <code class="kbd text-lg">{{ qid }}</code></h1>
+    <div class="row-tight mt-2 muted text-sm">
+      <span>Comparing</span>
+      <span class="chip">v{{ left.version }} <span class="muted">· {{ left.changed_at_human or left.changed_at }}</span></span>
+      <span class="muted">→</span>
+      <span class="chip">v{{ right.version }} <span class="muted">· {{ right.changed_at_human or right.changed_at }}</span></span>
+    </div>
+  </div>
+  <div class="actions">
+    {% if versions and versions|length > 2 %}
+      <form method="get" class="form-inline">
+        <label for="lv" class="muted text-sm">left</label>
+        <select id="lv" class="select" name="left_v" onchange="this.form.submit()">
+          {% for v in versions %}
+            <option value="{{ v.version }}" {{ 'selected' if v.version == left.version else '' }}>v{{ v.version }}</option>
+          {% endfor %}
+        </select>
+        <label for="rv" class="muted text-sm">right</label>
+        <select id="rv" class="select" name="right_v" onchange="this.form.submit()">
+          {% for v in versions %}
+            <option value="{{ v.version }}" {{ 'selected' if v.version == right.version else '' }}>v{{ v.version }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="diff">
+  <div class="diff-pane">
+    <h4>Version {{ left.version }} — {{ left.author }}</h4>
+    {% for line in diff_left %}
+      <div class="diff-line {{ line.kind }}">
+        <span class="ln">{{ line.no }}</span>
+        <span>{{ line.text }}</span>
+      </div>
+    {% endfor %}
+  </div>
+  <div class="diff-pane">
+    <h4>Version {{ right.version }} — {{ right.author }}</h4>
+    {% for line in diff_right %}
+      <div class="diff-line {{ line.kind }}">
+        <span class="ln">{{ line.no }}</span>
+        <span>{{ line.text }}</span>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="row mt-5" style="justify-content: space-between;">
+  <a class="btn btn-ghost" href="{{ url_for('questions.detail', set_id=set.set_id, section='history') }}">Back to history</a>
+  {% if set.status == 'draft' %}
+    <a class="btn" href="{{ url_for('questions.edit_one', set_id=set.set_id, qid=qid) }}">Continue editing</a>
+  {% endif %}
+</div>
+{% endblock %}

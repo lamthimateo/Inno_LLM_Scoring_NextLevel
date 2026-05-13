@@ -1,36 +1,59 @@
-{% extends "_base.html" %}
-{% block title %}Log in · Inno LLM Scoring{% endblock %}
-{% block page_slug %}auth-login{% endblock %}
+{% extends "base.html" %}
+{% block title %}Sign in · Inno LLM Scoring{% endblock %}
 
-{% block content %}
-<section class="authcard card">
-  <h1 class="authcard__title">Log in</h1>
-  <p class="authcard__lede">Welcome back. Sign in to manage benchmark sets and runs.</p>
+{# Auth pages skip the regular nav/footer shell #}
+{% block shell %}
+<main class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="brand-mark" aria-hidden="true">N</span>
+      <div>
+        <div class="fw-700">Inno LLM Scoring</div>
+        <div class="muted text-sm">Next Level</div>
+      </div>
+    </div>
 
-  {% if error %}
-    <div class="flash flash--err">{{ error }}</div>
-  {% endif %}
+    <h1>Welcome back</h1>
+    <p class="sub">Sign in to manage benchmarks, runs and results.</p>
 
-  <form method="post" action="/auth/login" class="form" autocomplete="on">
-    <input type="hidden" name="next" value="{{ next or '' }}" />
+    {% include "components/_flash.html" %}
 
-    <label class="form__row">
-      <span class="form__label">Username</span>
-      <input class="form__input" name="username" type="text" autocomplete="username" required autofocus />
-    </label>
+    <form method="post" action="{{ url_for('login') }}" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      <input type="hidden" name="next" value="{{ request.query_params.get('next', '') if request else '' }}">
 
-    <label class="form__row">
-      <span class="form__label">Password</span>
-      <input class="form__input" name="password" type="password" autocomplete="current-password" required />
-    </label>
+      <div class="form-field">
+        <label for="username">Username</label>
+        <input class="input" id="username" name="username" type="text"
+               autocomplete="username" autofocus required
+               value="{{ form.username if form else '' }}">
+      </div>
 
-    <button class="btn btn--primary btn--full" type="submit">Log in</button>
-  </form>
+      <div class="form-field">
+        <div class="spread">
+          <label for="password">Password</label>
+          <a href="{{ url_for('forgot_password') }}" class="text-sm muted">Forgot?</a>
+        </div>
+        <input class="input" id="password" name="password" type="password"
+               autocomplete="current-password" required>
+      </div>
 
-  <div class="authcard__links">
-    <a href="/auth/forgot">Forgot password?</a>
-    <span aria-hidden="true">·</span>
-    <a href="/auth/signup">Create account</a>
+      <label class="check">
+        <input type="checkbox" name="remember" value="1"
+               {% if form and form.remember %}checked{% endif %}>
+        <span>Remember me for 14 days</span>
+      </label>
+
+      <button type="submit" class="btn btn-primary btn-block btn-lg">Sign in</button>
+    </form>
+
+    {% if signup_enabled %}
+      <div class="alt">
+        New here? <a href="{{ url_for('signup') }}">Create an account</a>
+      </div>
+    {% else %}
+      <div class="alt muted">Signup is disabled. Ask an admin for access.</div>
+    {% endif %}
   </div>
-</section>
+</main>
 {% endblock %}

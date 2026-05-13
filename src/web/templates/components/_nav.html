@@ -1,0 +1,47 @@
+{#
+  Top navigation partial.
+  Expects:
+    - current_user (or None)
+    - active_tab in {'questions','runs','results'}
+#}
+<nav class="nav" role="navigation" aria-label="Primary">
+  <div class="nav-inner">
+    <a class="brand" href="{{ url_for('home') if current_user else url_for('login') }}">
+      <span class="brand-mark" aria-hidden="true">N</span>
+      <span>Inno&nbsp;LLM&nbsp;Scoring <small>· Next Level</small></span>
+    </a>
+
+    {% if current_user %}
+      <div class="nav-tabs" role="tablist">
+        <a href="{{ url_for('questions.list') }}"
+           class="{{ 'active' if active_tab == 'questions' else '' }}"
+           role="tab" aria-selected="{{ 'true' if active_tab == 'questions' else 'false' }}">
+          Questions
+        </a>
+        <a href="{{ url_for('runs.list') }}"
+           class="{{ 'active' if active_tab == 'runs' else '' }}"
+           role="tab" aria-selected="{{ 'true' if active_tab == 'runs' else 'false' }}">
+          Runs
+        </a>
+        <a href="{{ url_for('results.list') }}"
+           class="{{ 'active' if active_tab == 'results' else '' }}"
+           role="tab" aria-selected="{{ 'true' if active_tab == 'results' else 'false' }}">
+          Results
+        </a>
+      </div>
+    {% endif %}
+
+    <div class="nav-spacer"></div>
+
+    <div class="nav-right">
+      <button type="button" class="btn btn-sm theme-toggle" data-theme-toggle title="Toggle theme">
+        <span data-theme-label>Theme</span>
+      </button>
+      {% if current_user %}
+        {% include "components/_user_badge.html" %}
+      {% else %}
+        <a class="btn btn-sm" href="{{ url_for('login') }}">Sign in</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>

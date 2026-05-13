@@ -1,46 +1,81 @@
-{% extends "_base.html" %}
-{% block title %}Sign up · Inno LLM Scoring{% endblock %}
-{% block page_slug %}auth-signup{% endblock %}
+{% extends "base.html" %}
+{% block title %}Create account · Inno LLM Scoring{% endblock %}
 
-{% block content %}
-<section class="authcard card">
-  <h1 class="authcard__title">Create your account</h1>
-  <p class="authcard__lede">
-    Pick a username and password. Email is optional — we only use it for
-    password resets (link is printed to the server log in this build).
-  </p>
+{% block shell %}
+<main class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="brand-mark" aria-hidden="true">N</span>
+      <div>
+        <div class="fw-700">Inno LLM Scoring</div>
+        <div class="muted text-sm">Next Level</div>
+      </div>
+    </div>
 
-  {% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+    <h1>Create your account</h1>
+    <p class="sub">Set up access for authoring or reviewing benchmark sets.</p>
 
-  <form method="post" action="/auth/signup" class="form" autocomplete="on">
-    <label class="form__row">
-      <span class="form__label">Username</span>
-      <input class="form__input" name="username" type="text" minlength="3" maxlength="32"
-             value="{{ form_values.username or '' }}" required autofocus />
-      <small class="form__hint">3-32 chars, lowercase letters, digits, underscores, dashes.</small>
-    </label>
+    {% include "components/_flash.html" %}
 
-    <label class="form__row">
-      <span class="form__label">Email <span class="form__optional">(optional)</span></span>
-      <input class="form__input" name="email" type="email" value="{{ form_values.email or '' }}" />
-    </label>
+    {% if not signup_enabled %}
+      <div class="alert alert-warn">
+        <div class="alert-body">
+          <div class="alert-title">Signup is disabled</div>
+          <div>An administrator has turned off self-service signup. Ask them to create your account.</div>
+        </div>
+      </div>
+    {% else %}
+      <form method="post" action="{{ url_for('signup') }}" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
 
-    <label class="form__row">
-      <span class="form__label">Password</span>
-      <input class="form__input" name="password" type="password" autocomplete="new-password" minlength="8" required />
-      <small class="form__hint">At least 8 characters.</small>
-    </label>
+        <div class="form-field {% if errors and errors.username %}has-error{% endif %}">
+          <label for="username">Username</label>
+          <input class="input" id="username" name="username" type="text"
+                 minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\-]+"
+                 autocomplete="username" required
+                 value="{{ form.username if form else '' }}">
+          <div class="help">Letters, digits, dot, dash, underscore. 3–32 chars.</div>
+          {% if errors and errors.username %}<div class="err">{{ errors.username }}</div>{% endif %}
+        </div>
 
-    <label class="form__row">
-      <span class="form__label">Confirm password</span>
-      <input class="form__input" name="password_confirm" type="password" autocomplete="new-password" minlength="8" required />
-    </label>
+        <div class="form-field {% if errors and errors.email %}has-error{% endif %}">
+          <label for="email">Email</label>
+          <input class="input" id="email" name="email" type="email"
+                 autocomplete="email" required
+                 value="{{ form.email if form else '' }}">
+          {% if errors and errors.email %}<div class="err">{{ errors.email }}</div>{% endif %}
+        </div>
 
-    <button class="btn btn--primary btn--full" type="submit">Create account</button>
-  </form>
+        <div class="form-field {% if errors and errors.password %}has-error{% endif %}">
+          <label for="password">Password</label>
+          <input class="input" id="password" name="password" type="password"
+                 autocomplete="new-password" minlength="8" required>
+          <div class="pw-strength" data-pw-strength-for="#password" data-score="0" aria-hidden="true">
+            <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+          </div>
+          <div class="help">At least 8 characters. Mix letters, numbers, symbols for a stronger score.</div>
+          {% if errors and errors.password %}<div class="err">{{ errors.password }}</div>{% endif %}
+        </div>
 
-  <div class="authcard__links">
-    Already have an account? <a href="/auth/login">Log in</a>
+        <div class="form-field {% if errors and errors.password_confirm %}has-error{% endif %}">
+          <label for="password_confirm">Confirm password</label>
+          <input class="input" id="password_confirm" name="password_confirm" type="password"
+                 autocomplete="new-password" minlength="8" required>
+          {% if errors and errors.password_confirm %}<div class="err">{{ errors.password_confirm }}</div>{% endif %}
+        </div>
+
+        <label class="check">
+          <input type="checkbox" name="accept_terms" value="1" required>
+          <span>I understand this is an internal school-project tool.</span>
+        </label>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg">Create account</button>
+      </form>
+    {% endif %}
+
+    <div class="alt">
+      Already have an account? <a href="{{ url_for('login') }}">Sign in</a>
+    </div>
   </div>
-</section>
+</main>
 {% endblock %}
