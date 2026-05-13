@@ -1,3 +1,19 @@
+"""Persistence helpers for a single model run.
+
+This module is the bridge between "raw model output" and "rows in SQLite".
+It is called from both ``run-file`` and ``run-openai`` so that the storage
+shape stays identical regardless of how the output was produced.
+
+Functions:
+
+- :func:`load_answer_key` reads ``{qid: correct_answer}`` for a set.
+- :func:`store_model_run` inserts/updates the raw output row and returns its
+  surrogate ``model_run_id``.
+- :func:`store_answers_and_aggregates` parses the raw output, scores it
+  against the answer key, and persists both per-question rows and the
+  per-run aggregate row used by the leaderboard.
+"""
+
 import json
 from typing import Dict, Optional
 

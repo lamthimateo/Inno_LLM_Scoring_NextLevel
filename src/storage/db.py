@@ -1,3 +1,15 @@
+"""SQLite connection helpers + lightweight migrations.
+
+- :func:`connect` opens a connection with ``row_factory = sqlite3.Row`` and
+  ``PRAGMA foreign_keys = ON``, then runs idempotent migrations.
+- :func:`init_db` applies the full schema from :mod:`src.storage.schema`.
+- :func:`utc_now_iso` returns a stable ISO-8601 timestamp used everywhere
+  ``created_at`` / ``updated_at`` is written.
+
+Migrations live in :func:`_ensure_schema_migrations` and are intentionally
+additive (e.g. adding the ``meta_json`` column to existing DBs).
+"""
+
 import sqlite3
 from pathlib import Path
 from datetime import datetime, timezone

@@ -1,3 +1,11 @@
+"""File-based execution driver.
+
+Used by ``run-file`` when models are evaluated via copy/paste: drop each
+model's reply into ``imports/model_outputs/<model_id>.txt`` and this loader
+reads them into ``{model_id: raw_text}``. The filename stem becomes the
+``model_id`` used everywhere downstream (DB, exports, leaderboard).
+"""
+
 from pathlib import Path
 from typing import Dict
 

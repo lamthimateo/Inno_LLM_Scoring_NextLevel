@@ -1,3 +1,15 @@
+"""Parse strict ``QID: LETTER`` model output.
+
+The benchmark forces models to reply with one ``QID: LETTER`` per line
+(no markdown, no explanations). :func:`parse_model_output` is intentionally
+permissive about whitespace but strict about the letter set ``A-E`` (case
+sensitive, uppercase only). Lowercase letters or extra words are treated
+as "no answer" and contribute to the ``format_violations`` counter, which
+becomes a column in the leaderboard.
+
+If a QID appears multiple times in the same reply, the **last** value wins.
+"""
+
 import re
 from typing import Dict, Optional, Tuple
 

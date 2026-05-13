@@ -1,3 +1,11 @@
+"""API-based execution driver.
+
+Currently only wraps :class:`~src.adapters.openai_adapter.OpenAIAdapter` so
+the CLI can call several OpenAI models in sequence. When the Anthropic /
+Google adapters are wired up, add sibling helpers (``run_anthropic_models``
+etc.) here and dispatch from the CLI.
+"""
+
 from typing import Iterable, List, Optional
 
 from src.adapters.openai_adapter import OpenAIAdapter

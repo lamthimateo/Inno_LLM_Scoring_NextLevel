@@ -1,4 +1,0 @@
-model_id,total,chemistry,emotions,math,reasoning3d,no_knowledge,contradiction,correct,wrong,blank,format_violations
-gemini3,27,-1,-12,10,10,10,10,57,3,0,0
-sonnet4,27,-1,-12,10,10,10,10,57,3,0,0
-gpt5,5,-12,-12,-1,10,10,10,55,5,0,0
