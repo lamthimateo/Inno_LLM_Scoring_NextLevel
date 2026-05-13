@@ -6,9 +6,9 @@
 #}
 <nav class="nav" role="navigation" aria-label="Primary">
   <div class="nav-inner">
-    <a class="brand" href="{{ url_for('home') if current_user else url_for('login') }}">
-      <span class="brand-mark" aria-hidden="true">N</span>
-      <span>Inno&nbsp;LLM&nbsp;Scoring <small>· Next Level</small></span>
+    <a class="brand" href="{{ url_for('home') if current_user else url_for('login') }}"
+       aria-label="LLM Arena — home">
+      <img class="brand-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="LLM Arena">
     </a>
 
     {% if current_user %}

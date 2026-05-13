@@ -1,5 +1,5 @@
 /* =========================================================================
-   Inno LLM Scoring · Next Level — design system stylesheet
+   LLM Arena — design system stylesheet
    -------------------------------------------------------------------------
    Aesthetic: Anthropic/Claude — warm ivory paper, soft coral accent, flat
    surfaces (no radial-gradient cosmos), generous whitespace, muted earth
@@ -187,10 +187,11 @@ html[data-theme="dark"] .nav {
 .nav-inner {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 12px 22px;
+  padding: 10px 22px;
   display: flex;
   align-items: center;
   gap: 18px;
+  min-height: 80px;
 }
 .brand {
   display: inline-flex;
@@ -214,6 +215,18 @@ html[data-theme="dark"] .nav {
   font-size: 13px;
   letter-spacing: -0.02em;
   box-shadow: 0 1px 2px rgba(60, 50, 40, 0.18);
+}
+.brand-logo {
+  display: block;
+  height: 60px;
+  width: auto;
+  max-width: 240px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.brand-logo-lg {
+  height: 108px;
+  max-width: 320px;
 }
 .nav-tabs {
   display: flex;
@@ -274,21 +287,6 @@ html[data-theme="dark"] .nav {
 }
 .container { max-width: 1280px; margin: 0 auto; padding: 0 22px; }
 .page .container { padding: 0; }
-
-.footer {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 22px 22px 32px;
-  color: var(--text-subtle);
-  font-size: 12px;
-}
-.footer .container {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-}
 
 /* ----------- page header ----------- */
 .page-header {
@@ -357,8 +355,9 @@ html[data-theme="dark"] .nav {
 .auth-brand {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 28px;
 }
 .alt {
   margin-top: 18px;

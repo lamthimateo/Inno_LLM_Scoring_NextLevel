@@ -1,4 +1,4 @@
-# Inno LLM Scoring — Design System
+# LLM Arena — Design System
 
 _Version 0.2 · Day-1 of the 5-day GUI rewrite · author: UI design worker_
 
@@ -416,10 +416,10 @@ static/
 │   ├── app.js                     # vanilla JS for theme, modals, drops, etc.
 │   └── htmx.min.js                # vendored HTMX 1.9.12
 └── img/
-    └── favicon.svg                # brand mark
+    └── logo.png                   # brand mark (also used as favicon)
 
 templates/
-├── base.html                      # app shell (nav + flash + footer)
+├── base.html                      # app shell (nav + flash)
 ├── components/
 │   ├── _flash.html
 │   ├── _nav.html

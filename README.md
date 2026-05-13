@@ -1,4 +1,4 @@
-# Inno LLM Scoring — Next Level
+# LLM Arena
 
 A **web-first LM-Arena-style benchmark runner** with a two-person review
 workflow, multi-provider model adapters, PostgreSQL storage, and live runs
@@ -87,9 +87,9 @@ it creates three accounts so the two-person review can be demonstrated:
 ├── imports/                 sample input data (answer-key text files)
 ├── pyproject.toml           deps (mirrored in requirements.txt)
 ├── requirements.txt
-├── static/                  css, js, favicon — no build step
+├── static/                  css, js, logo — no build step
 │   ├── css/app.css          design tokens + components
-│   ├── img/favicon.svg
+│   ├── img/logo.png         brand mark (also used as favicon)
 │   └── js/                  htmx + a vanilla helper (theme/toast/modals)
 ├── src/
 │   ├── adapters/            model adapters
@@ -204,7 +204,7 @@ What's covered:
 | `OPENAI_API_KEY`          | unset                                          | Required for `openai:*` model IDs.                 |
 | `OPENROUTER_API_KEY`      | unset                                          | Required for `openrouter:*` model IDs.             |
 | `OPENROUTER_HTTP_REFERER` | `https://github.com/inno-llm-scoring`          | Sent to OpenRouter for traffic routing.            |
-| `OPENROUTER_APP_TITLE`    | `Inno LLM Scoring`                             |                                                    |
+| `OPENROUTER_APP_TITLE`    | `LLM Arena`                                    |                                                    |
 | `SEED_ADMIN_USERNAME`     | `admin`                                        |                                                    |
 | `SEED_ADMIN_PASSWORD`     | `inno-admin`                                   | Must be ≥ 8 chars. **Change in prod.**             |
 | `SEED_DEMO_USERS`         | `1`                                            | Set to `0` to skip the mateo/nikoleta accounts.    |

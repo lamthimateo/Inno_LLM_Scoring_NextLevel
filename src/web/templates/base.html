@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <title>{% block title %}Inno LLM Scoring{% endblock %}</title>
-  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
+  <title>{% block title %}LLM Arena{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   {% block head_extra %}{% endblock %}
   <script>
@@ -33,17 +33,6 @@
         {% block content %}{% endblock %}
       </div>
     </main>
-
-    <footer class="footer">
-      <div class="container">
-        <div>Inno LLM Scoring · v0.2 · school project (FHTW)</div>
-        <div class="row-tight muted">
-          <span class="kbd">?</span> shortcuts
-          <span>·</span>
-          <a href="{{ url_for('about') if False else '#' }}" class="muted">About</a>
-        </div>
-      </div>
-    </footer>
   {% endblock %}
 
   <div class="toast-region" aria-live="polite" aria-atomic="true"></div>

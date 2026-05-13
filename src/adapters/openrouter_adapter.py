@@ -51,7 +51,7 @@ class OpenRouterAdapter(ModelAdapter):
         self.model = model
         self.api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
         self._referer = os.getenv("OPENROUTER_HTTP_REFERER", "https://github.com/inno-llm-scoring")
-        self._app_title = os.getenv("OPENROUTER_APP_TITLE", "Inno LLM Scoring")
+        self._app_title = os.getenv("OPENROUTER_APP_TITLE", "LLM Arena")
 
     def id(self) -> str:
         return f"openrouter:{self.model}"
