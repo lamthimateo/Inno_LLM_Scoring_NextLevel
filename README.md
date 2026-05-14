@@ -185,14 +185,14 @@ What's covered:
 - **Pipeline / workflow** (5) — import → submit → approve → lock → run → aggregate.
 - **Auth service** (20) — register / login / change / reset / hash helpers.
 - **Auth routes** (7) — full HTTP flow via FastAPI TestClient.
-- **Questions routes** (13) — list, import preview, two-person review, edit, 403 + 404.
+- **Questions routes** (20) — list, import preview + submit path, two-person review, edit, 403 + 404.
 - **Runs orchestration** (6) — happy path, partial failure, total failure, cancellation.
 - **Runs routes** (10) — list, new-run modal, status fragment, leaderboard, cancel.
 - **Template smoke** (5) — every rendered template returns 200.
 - **End-to-end** (1) — login → import → review → lock → run → leaderboard,
   all via HTTP, with a mocked adapter.
 
-76 tests, ~30 s on a laptop.
+83 tests, ~35 s on a laptop.
 
 ---
 
