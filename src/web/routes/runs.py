@@ -13,18 +13,19 @@ POST /runs/{run_id}/cancel   request cancellation of an in-flight run
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.adapters.registry import (
     DEFAULT_MODELS,
     MODEL_CATALOG,
     catalog_by_id,
+    catalog_entry_env_ok,
     catalog_grouped,
     default_catalog_ids,
     group_is_available,
@@ -38,13 +39,32 @@ from src.benchmark.runs import (
     list_runs,
     request_cancellation,
     run_in_background,
+    run_model_slots,
 )
 from src.storage.db import get_session
-from src.storage.models import AuditLog, Job, JobStatus, Run, SetStatus, User, UserRole
+from src.storage.models import (
+    AuditLog,
+    Job,
+    JobStatus,
+    ModelRun,
+    QuestionSet,
+    Run,
+    SetStatus,
+    User,
+    UserRole,
+)
 from src.web.templating import render
 
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+
+
+def _fmt_ts_human(dt: datetime | None) -> str | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.strftime("%Y-%m-%d %H:%M UTC")
 
 
 @router.get("", response_class=HTMLResponse)
@@ -56,12 +76,19 @@ def list_view(
     session: Session = Depends(get_session),
 ):
     raw = list_runs(session)
+    rid_list = [r["run_id"] for r in raw]
+    jobs_map: dict[str, Job] = {}
+    if rid_list:
+        stmt_jobs = select(Job).where(Job.id.in_(rid_list))
+        for j in session.scalars(stmt_jobs).all():
+            jobs_map[j.id] = j
+
     # Adapt the dict shape coming out of list_runs() to the keys the
     # design-system runs/list.html template expects.
     runs = []
     for r in raw:
-        models = []  # we don't yet store the per-run model-ids list outside
-                    # the Job payload; cheap stub for the chip row.
+        job = jobs_map.get(r["run_id"])
+        models = list((job.payload_json or {}).get("model_ids") or []) if job else []
         runs.append(
             {
                 **r,
@@ -69,6 +96,7 @@ def list_view(
                 "set_title": r.get("set_id"),
                 "started_by": r.get("started_by_username"),
                 "started_at": r.get("created_at"),
+                "started_at_human": _fmt_ts_human(r.get("created_at")),
                 "best_score": r.get("top_score"),
             }
         )
@@ -81,7 +109,7 @@ def list_view(
         request,
         "runs/list.html",
         current_user=user,
-        active_tab="results",
+        active_tab="runs",
         runs=runs,
         locked_sets=locked_sets,
         default_models=DEFAULT_MODELS,
@@ -114,12 +142,9 @@ def _validate_selected_models(
 
     Rules
     -----
-    - Empty selection → silently fall back to :func:`default_catalog_ids`
-      (so a user pressing "Start" with nothing checked still gets a working
-      run).
+    - Empty selection → silently fall back to :func:`default_catalog_ids`.
     - Unknown id → flash error, no fallback.
-    - Known id whose ``requires_env`` is missing → flash error naming the
-      provider key the operator needs to set.
+    - Known id whose required env var is missing → flash error.
     - Duplicates → de-duplicated while preserving submission order.
     """
 
@@ -145,8 +170,13 @@ def _validate_selected_models(
     missing_env: list[tuple[str, str]] = []
     for m in cleaned:
         entry = by_id[m]
-        if not os.getenv(entry.requires_env):
-            missing_env.append((entry.label, entry.requires_env))
+        if not catalog_entry_env_ok(entry):
+            env_label = (
+                "OPENROUTER_API_KEY or OPENROUTER_API"
+                if entry.requires_env == "OPENROUTER_API_KEY"
+                else entry.requires_env
+            )
+            missing_env.append((entry.label, env_label))
     if missing_env:
         labels = ", ".join(f"{lbl} (needs {env})" for lbl, env in missing_env)
         return [], (
@@ -171,7 +201,7 @@ def new_form(
         request,
         "runs/new.html",
         current_user=user,
-        active_tab="results",
+        active_tab="runs",
         locked_sets=locked_sets,
         default_models=DEFAULT_MODELS,
         **_catalog_context(),
@@ -197,7 +227,7 @@ def new_submit(
             request,
             "runs/new.html",
             current_user=user,
-            active_tab="results",
+            active_tab="runs",
             locked_sets=locked_sets,
             default_models=DEFAULT_MODELS,
             **_catalog_context(),
@@ -221,7 +251,7 @@ def new_submit(
             request,
             "runs/new.html",
             current_user=user,
-            active_tab="results",
+            active_tab="runs",
             locked_sets=locked_sets,
             default_models=DEFAULT_MODELS,
             **_catalog_context(),
@@ -247,21 +277,38 @@ def detail(
     if run is None or job is None:
         raise HTTPException(status_code=404, detail="Run not found.")
     rows = fetch_leaderboard_rows(session, run_id)
-    # Decorate ``run`` with extras the polished detail template asks for.
+    model_runs = run_model_slots(session, run_id=run_id, job=job)
+    stmt_mr = (
+        select(ModelRun)
+        .where(ModelRun.run_id == run_id)
+        .order_by(ModelRun.model_run_id)
+    )
+    model_outputs = [
+        {"model_id": mr.model_id, "raw_text": mr.raw_text or ""}
+        for mr in session.scalars(stmt_mr).all()
+    ]
+
+    qs = session.get(QuestionSet, run.set_id)
     run.status = job.status
-    run.set_title = run.set_id
-    run.started_by = None
+    run.set_title = (qs.title or run.set_id) if qs else run.set_id
+    starter = session.get(User, run.started_by_id) if run.started_by_id else None
+    run.started_by = starter.username if starter else "—"
     run.started_at = run.created_at
+    run.started_at_human = _fmt_ts_human(run.created_at)
+    run.finished_at = job.finished_at
+    run.finished_at_human = _fmt_ts_human(job.finished_at)
     run.partial_aggregates = []
-    run.model_runs = []
+
     return render(
         request,
         "runs/detail.html",
         current_user=user,
-        active_tab="results",
+        active_tab="runs",
         run=run,
         job=job,
         rows=rows,
+        model_runs=model_runs,
+        model_outputs=model_outputs,
     )
 
 
@@ -279,14 +326,16 @@ def status_fragment(
     if run is None or job is None:
         raise HTTPException(status_code=404, detail="Run not found.")
     rows = fetch_leaderboard_rows(session, run_id)
+    model_runs = run_model_slots(session, run_id=run_id, job=job)
     return render(
         request,
-        "runs/_status_fragment.html",
+        "runs/_run_live_fragment.html",
         current_user=user,
-        active_tab="results",
+        active_tab="runs",
         run=run,
         job=job,
         rows=rows,
+        model_runs=model_runs,
     )
 
 

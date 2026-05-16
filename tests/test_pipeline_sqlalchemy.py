@@ -9,10 +9,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel
 
 from src.benchmark.exporting import fetch_leaderboard_rows
 from src.benchmark.importing import import_questions
-from src.benchmark.pipeline import store_answers_and_aggregates, store_model_run
+from src.benchmark.pipeline import (
+    json_safe_meta,
+    store_answers_and_aggregates,
+    store_model_run,
+)
 from src.benchmark.prompting import PromptingError, build_prompt_text
 from src.benchmark.workflow import approve, lock, submit_review
 from src.storage.models import QuestionSet, Run, SetStatus
@@ -42,6 +47,23 @@ def imports_dir(tmp_path: Path) -> Path:
     folder.mkdir()
     (folder / "Category_1_Chemistry.txt").write_text(SAMPLE_FILE, encoding="utf-8")
     return folder
+
+
+def test_json_safe_meta_coerces_nested_pydantic_like_gemini_usage():
+    """Gemini ``usage_metadata`` embeds nested SDK models; DB JSON must encode."""
+
+    class ModalityTokenCount(BaseModel):
+        modality: str = "TEXT"
+        tokens: int = 42
+
+    class UsageMeta(BaseModel):
+        prompt_token_count: int = 100
+        detail: ModalityTokenCount = ModalityTokenCount()
+
+    safe = json_safe_meta({"provider": "google", "usage": UsageMeta()})
+    assert safe["provider"] == "google"
+    assert safe["usage"]["prompt_token_count"] == 100
+    assert safe["usage"]["detail"]["tokens"] == 42
 
 
 def test_import_questions_creates_draft_set(session, imports_dir):

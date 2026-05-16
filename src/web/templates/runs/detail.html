@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% set active_tab = 'runs' %}
 {% block title %}Run {{ run.run_id }} · LLM Arena{% endblock %}
 
 {% block content %}
@@ -16,7 +15,7 @@
       <span>·</span>
       <span>Started by <b class="soft">{{ run.started_by }}</b></span>
       <span>·</span>
-      <span>at <time datetime="{{ run.started_at }}">{{ run.started_at_human or run.started_at }}</time></span>
+      <span>at <time datetime="{{ run.started_at.isoformat() if run.started_at else '' }}">{{ run.started_at_human or run.started_at }}</time></span>
     </div>
   </div>
   <div class="actions">
@@ -35,109 +34,11 @@
 </div>
 
 <div class="grid grid-content">
-  {# LEFT: per-model progress (auto-refresh while running) #}
-  <div class="stack"
-       {% if run.status in ['queued','running'] %}
-       hx-get="{{ url_for('runs.detail_fragment', run_id=run.run_id) }}"
-       hx-trigger="every 2s"
-       hx-target="this"
-       hx-select=".run-models"
-       hx-swap="outerHTML"
-       {% endif %}>
-
-    <div class="card run-models">
-      <div class="card-header">
-        <h3>Model progress</h3>
-        <span class="muted text-sm">
-          {% if run.status == 'running' %}
-            <span class="dot good" style="display:inline-block; animation: pulse 1.4s ease-in-out infinite; vertical-align: middle;"></span>
-            live · updates every 2 s
-          {% else %}
-            {{ run.status }}
-          {% endif %}
-        </span>
-      </div>
-
-      <div class="model-progress">
-        {% for m in run.model_runs %}
-          <div class="model-row">
-            <div class="m-name">
-              <span>{{ m.label or m.model_id }}</span>
-              <code class="kbd">{{ m.model_id }}</code>
-            </div>
-            <div class="progress {{ 'indeterminate' if m.status == 'running' and m.percent in [none, 0] else '' }}">
-              <div class="bar-fill" style="width: {{ (m.percent or (0 if m.status != 'done' else 100)) }}%;"></div>
-            </div>
-            <div class="m-pct">
-              {% if m.status == 'done' %}100%
-              {% elif m.percent is not none %}{{ m.percent }}%
-              {% else %}—{% endif %}
-            </div>
-            <div style="text-align:right;">
-              {% with status=m.status %}{% include "components/_status_badge.html" %}{% endwith %}
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    </div>
-
-    {# Live aggregates (only after first answers come in) #}
-    {% if run.partial_aggregates %}
-      <div class="card">
-        <div class="card-header">
-          <h3>Live aggregates</h3>
-          <span class="muted text-sm">snapshot · refreshed with the page</span>
-        </div>
-        <div class="table-wrap" style="box-shadow: none; border: 1px solid var(--border);">
-          <table class="table compact">
-            <thead>
-              <tr>
-                <th>Model</th><th class="num">Total</th>
-                <th class="num">Correct</th><th class="num">Wrong</th><th class="num">Blank</th>
-                <th class="num">Format violations</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for a in run.partial_aggregates %}
-              <tr>
-                <td>{{ a.model_id }}</td>
-                <td class="num">
-                  <span class="score-tag">
-                    <span class="dot {{ 'good' if a.total >= 0 else 'bad' }}"></span> {{ a.total }}
-                  </span>
-                </td>
-                <td class="num">{{ a.correct }}</td>
-                <td class="num">{{ a.wrong }}</td>
-                <td class="num">{{ a.blank }}</td>
-                <td class="num">{{ a.format_violations }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    {% endif %}
-
-    {# Errors panel — only if any model errored #}
-    {% set errored = run.model_runs | selectattr('status','equalto','error') | list %}
-    {% if errored %}
-      <div class="card">
-        <div class="card-header"><h3 class="danger">Errors</h3></div>
-        <div class="stack-tight">
-          {% for m in errored %}
-            <div class="alert alert-error">
-              <div class="alert-body">
-                <div class="alert-title">{{ m.model_id }}</div>
-                <div class="muted">{{ m.error_message or 'Unknown error.' }}</div>
-              </div>
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-    {% endif %}
+  <div class="stack">
+    {% include "runs/_run_live_fragment.html" %}
+    {% include "components/_model_outputs.html" %}
   </div>
 
-  {# RIGHT: meta #}
   <aside class="stack">
     <div class="card">
       <div class="card-header"><h3>Run details</h3></div>

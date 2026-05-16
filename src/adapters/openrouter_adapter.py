@@ -5,9 +5,9 @@ upstream providers (OpenAI, Anthropic, Google, Meta, Mistral, …) under a
 single API key. This lets the benchmark hit four different models from
 four different vendors without juggling four separate SDKs.
 
-Reads ``OPENROUTER_API_KEY`` (preferred) or falls back to
-``OPENAI_API_KEY`` (so a single key can route both endpoints during local
-development).
+Reads ``OPENROUTER_API_KEY`` (preferred), ``OPENROUTER_API`` (alias), or
+falls back to ``OPENAI_API_KEY`` (so a single key can route both endpoints
+during local development).
 
 The model ID is expected in OpenRouter's ``provider/model`` form, e.g.::
 
@@ -45,12 +45,28 @@ def _sleep_backoff_s(attempt: int) -> float:
     return min(8.0, 0.5 * (2 ** max(0, attempt - 1)))
 
 
+def openrouter_api_credentials() -> Optional[str]:
+    """Resolve the OpenRouter-compatible API key from the environment."""
+
+    return (
+        os.getenv("OPENROUTER_API_KEY")
+        or os.getenv("OPENROUTER_API")
+        or os.getenv("OPENAI_API_KEY")
+    )
+
+
+def openrouter_explicit_credentials() -> Optional[str]:
+    """Keys that activate the OpenRouter default preset (OpenAI key alone does not)."""
+
+    return os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API")
+
+
 class OpenRouterAdapter(ModelAdapter):
     BASE_URL = "https://openrouter.ai/api/v1"
 
     def __init__(self, model: str):
         self.model = model
-        self.api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
+        self.api_key = openrouter_api_credentials()
         self._referer = os.getenv("OPENROUTER_HTTP_REFERER", "https://github.com/inno-llm-scoring")
         self._app_title = os.getenv("OPENROUTER_APP_TITLE", "LLM Arena")
 
@@ -72,7 +88,8 @@ class OpenRouterAdapter(ModelAdapter):
     ) -> ModelResult:
         if not self.api_key:
             raise RuntimeError(
-                "OPENROUTER_API_KEY is not set. Export it or add it to .env."
+                "OpenRouter API key is not set. Set OPENROUTER_API_KEY or "
+                "OPENROUTER_API (or OPENAI_API_KEY for dev) in the environment."
             )
 
         try:
