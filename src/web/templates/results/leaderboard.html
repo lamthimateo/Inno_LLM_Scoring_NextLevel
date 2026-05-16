@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% set active_tab = 'results' %}
 {% block title %}Leaderboard · {{ run.set_title or run.set_id }} · LLM Arena{% endblock %}
 
 {#
@@ -65,6 +64,10 @@
     <p class="hint">Select up to two rows in the table to compare side-by-side.</p>
     <div class="compare" id="lb-compare"></div>
   </div>
+</div>
+
+<div class="stack mt-4">
+  {% include "components/_model_outputs.html" %}
 </div>
 {% endblock %}
 

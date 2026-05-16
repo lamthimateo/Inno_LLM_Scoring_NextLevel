@@ -349,3 +349,87 @@ def list_runs(session: Session) -> list[dict[str, Any]]:
         .order_by(Run.created_at.desc())
     )
     return [dict(r._mapping) for r in session.execute(stmt).all()]
+
+
+def run_model_slots(session: Session, *, run_id: str, job: Job) -> list[dict[str, Any]]:
+    """Align ``job.payload_json.model_ids`` with :class:`ModelRun` rows for the UI."""
+
+    payload = job.payload_json or {}
+    model_ids: list[str] = list(payload.get("model_ids") or [])
+    if not model_ids:
+        return []
+
+    stmt = select(ModelRun).where(ModelRun.run_id == run_id).order_by(ModelRun.model_run_id)
+    by_mid: dict[str, ModelRun] = {mr.model_id: mr for mr in session.scalars(stmt).all()}
+
+    st_job = job.status
+    pd = job.progress_done or 0
+    terminal = st_job in (
+        JobStatus.DONE.value,
+        JobStatus.ERROR.value,
+        JobStatus.CANCELLED.value,
+    )
+
+    out: list[dict[str, Any]] = []
+    for i, mid in enumerate(model_ids):
+        short = mid.split(":", 1)[-1] if ":" in mid else mid
+        if mid in by_mid:
+            out.append(
+                {
+                    "model_id": mid,
+                    "label": short,
+                    "status": "done",
+                    "percent": 100,
+                    "error_message": None,
+                }
+            )
+            continue
+
+        if st_job == JobStatus.QUEUED.value:
+            slot_status = "queued"
+            pct = 0
+        elif st_job == JobStatus.RUNNING.value:
+            if i < pd:
+                slot_status = "error"
+                pct = 0
+            elif i == pd:
+                slot_status = "running"
+                pct = 50
+            else:
+                slot_status = "queued"
+                pct = 0
+        elif st_job == JobStatus.CANCELLED.value:
+            if i >= pd:
+                slot_status = "cancelled"
+            else:
+                slot_status = "error"
+            pct = 0
+        else:
+            slot_status = "error"
+            pct = 0
+
+        out.append(
+            {
+                "model_id": mid,
+                "label": short,
+                "status": slot_status,
+                "percent": pct,
+                "error_message": None,
+            }
+        )
+
+    if terminal and job.error:
+        err_blob = job.error
+        for row in out:
+            if row["status"] not in ("error", "cancelled"):
+                continue
+            mid = row["model_id"]
+            prefix = f"{mid}:"
+            if prefix in err_blob:
+                idx = err_blob.index(prefix)
+                tail = err_blob[idx + len(prefix) :].strip()
+                row["error_message"] = tail.split(";", 1)[0].strip()
+            elif mid in err_blob and row["status"] == "error":
+                row["error_message"] = err_blob[:800]
+
+    return out

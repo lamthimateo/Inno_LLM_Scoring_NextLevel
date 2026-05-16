@@ -94,8 +94,11 @@ Jinja2 + HTMX for partial updates.
 - `openai_adapter.py` — OpenAI Responses API with retries / backoff.
 - `openrouter_adapter.py` — OpenRouter Chat Completions (single key,
   many providers).
-- `anthropic_adapter.py`, `google_adapter.py` — stubs; route Claude /
-  Gemini traffic through OpenRouter for now.
+- `anthropic_adapter.py`, `google_adapter.py`, `groq_adapter.py`,
+  `mistral_adapter.py` — native SDK adapters (`ANTHROPIC_API_KEY`,
+  `GOOGLE_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`).
+- `mistral_agent_adapter.py` — Mistral **Agents** beta
+  (`mistral-agent:<id>` when ``MISTRAL_AGENT_ID`` is set).
 - `registry.py` — `provider:model` → adapter lookup + the curated
   catalog used by the new-run model picker.
 

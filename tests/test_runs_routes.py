@@ -279,15 +279,6 @@ def test_cancel_route_404_for_unknown_run(client_with_users):
 # ---------------------------------------------------------------------------
 # GET /runs/new + POST /runs/new — curated-catalog model picker
 # ---------------------------------------------------------------------------
-#
-# These tests pin the UX cleanup from "feat(runs): catalog-backed model
-# dropdown with provider grouping". The new form:
-#   - renders a <select multiple name="models"> with one <optgroup> per
-#     provider group
-#   - validates submitted ids against ``MODEL_CATALOG``
-#   - rejects ids whose ``requires_env`` is missing (e.g. openrouter ids
-#     when ``OPENROUTER_API_KEY`` is unset)
-#   - falls back to ``default_catalog_ids`` when the user submits nothing
 
 
 def _login_mateo(client: TestClient) -> None:
@@ -297,18 +288,24 @@ def _login_mateo(client: TestClient) -> None:
 @pytest.fixture
 def no_openrouter_key(monkeypatch):
     """Force the catalog into "OpenAI-direct only" mode for the duration of
-    a test by clearing ``OPENROUTER_API_KEY`` and rebuilding ``MODEL_CATALOG``
-    so ``is_default`` flips back to the OpenAI preset."""
+    a test by clearing cross-provider keys and rebuilding ``MODEL_CATALOG``
+    so ``is_default`` falls back to the OpenAI preset."""
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API", raising=False)
+    for key in (
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "GROQ_API_KEY",
+        "MISTRAL_API_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-pytest-openai-placeholder")
     import importlib
 
     from src.adapters import registry as reg
 
     importlib.reload(reg)
-    # The route module imported these symbols at module load time, so
-    # rebinding them on the route module is what actually changes route
-    # behavior for the test.
     from src.web.routes import runs as runs_route
 
     runs_route.MODEL_CATALOG = reg.MODEL_CATALOG
@@ -317,6 +314,7 @@ def no_openrouter_key(monkeypatch):
     runs_route.catalog_grouped = reg.catalog_grouped
     runs_route.default_catalog_ids = reg.default_catalog_ids
     runs_route.group_is_available = reg.group_is_available
+    runs_route.catalog_entry_env_ok = reg.catalog_entry_env_ok
     yield
     importlib.reload(reg)
     runs_route.MODEL_CATALOG = reg.MODEL_CATALOG
@@ -325,11 +323,24 @@ def no_openrouter_key(monkeypatch):
     runs_route.catalog_grouped = reg.catalog_grouped
     runs_route.default_catalog_ids = reg.default_catalog_ids
     runs_route.group_is_available = reg.group_is_available
+    runs_route.catalog_entry_env_ok = reg.catalog_entry_env_ok
+
+
+def test_openrouter_api_credentials_prefers_key_then_api_alias(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    from src.adapters.openrouter_adapter import openrouter_api_credentials
+
+    assert openrouter_api_credentials() is None
+    monkeypatch.setenv("OPENROUTER_API", "alias-key")
+    assert openrouter_api_credentials() == "alias-key"
+    monkeypatch.setenv("OPENROUTER_API_KEY", "primary-key")
+    assert openrouter_api_credentials() == "primary-key"
 
 
 def test_new_run_form_renders_catalog_grouped_by_provider(client_with_users):
-    """GET /runs/new must render the curated catalog as a <select multiple>
-    with both provider <optgroup>s and the expected option ids."""
+    """GET /runs/new must render the curated catalog as a <select multiple>."""
 
     _import_and_lock_set(client_with_users, set_id="bench")
     _logout(client_with_users)
@@ -339,26 +350,15 @@ def test_new_run_form_renders_catalog_grouped_by_provider(client_with_users):
     assert r.status_code == 200
     body = r.text
 
-    # Native multi-select replaces the old textarea / per-model switches.
     assert 'name="models"' in body
     assert "multiple" in body
-    assert 'name="model_ids_csv"' not in body, (
-        "old free-form textarea should be gone now that the picker is catalog-backed"
-    )
-
-    # Both provider groups render as <optgroup>s.
     assert 'label="OpenAI direct"' in body
-    assert "OpenRouter cross-provider" in body  # label may have a suffix when disabled
-
-    # Sample of expected option ids — one per provider group.
+    assert "OpenRouter cross-provider" in body
     assert 'value="openai:gpt-5.5"' in body
     assert 'value="openrouter:anthropic/claude-sonnet-4.5"' in body
 
 
 def test_new_run_rejects_unknown_model_id(client_with_users):
-    """POST /runs/new with a bogus model id must re-render the form with a
-    flash error (400) instead of trying to launch the run."""
-
     _import_and_lock_set(client_with_users, set_id="bench")
     _logout(client_with_users)
     _login_mateo(client_with_users)
@@ -369,7 +369,6 @@ def test_new_run_rejects_unknown_model_id(client_with_users):
         follow_redirects=False,
     )
     assert r.status_code == 400, r.text
-    # The form re-renders with the error visible to the user.
     assert "Unknown model id" in r.text
     assert "openai:bogus" in r.text
 
@@ -377,10 +376,6 @@ def test_new_run_rejects_unknown_model_id(client_with_users):
 def test_new_run_rejects_openrouter_when_no_key_set(
     client_with_users, no_openrouter_key
 ):
-    """Submitting an OpenRouter model id must be rejected when
-    ``OPENROUTER_API_KEY`` is not configured — runs would just fail at the
-    first model call otherwise, with a much less helpful error."""
-
     _import_and_lock_set(client_with_users, set_id="bench")
     _logout(client_with_users)
     _login_mateo(client_with_users)

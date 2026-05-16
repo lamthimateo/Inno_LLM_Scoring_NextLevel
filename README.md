@@ -25,10 +25,10 @@ The shortest path from `git clone` to a working UI:
 
 ```bash
 cp .env.example .env
-# Edit .env: at minimum set SESSION_SECRET. Add OPENROUTER_API_KEY if you
-# want to run real evaluations against models (without it the UI still
-# works — you can import questions, review them, etc., and stub out runs
-# via the unit tests).
+# Edit .env: set SESSION_SECRET. For live runs, either add OPENROUTER_API_KEY,
+# or set all four native keys (ANTHROPIC_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY,
+# MISTRAL_API_KEY) to use direct SDK adapters as the default preset, or use
+# OPENAI_API_KEY alone for OpenAI-direct defaults.
 
 docker compose up --build
 ```
@@ -96,8 +96,10 @@ it creates three accounts so the two-person review can be demonstrated:
 │   │   ├── base.py          ModelAdapter / ModelResult
 │   │   ├── openai_adapter.py        OpenAI Responses API + retries
 │   │   ├── openrouter_adapter.py    OpenRouter Chat Completions
-│   │   ├── anthropic_adapter.py     stub
-│   │   ├── google_adapter.py        stub
+│   │   ├── anthropic_adapter.py     Claude Messages API
+│   │   ├── google_adapter.py        Gemini (`google-genai`)
+│   │   ├── groq_adapter.py          Groq (OpenAI-compatible)
+│   │   ├── mistral_adapter.py       Mistral chat completions
 │   │   └── registry.py      'provider:model' → adapter
 │   ├── auth/                authentication
 │   │   ├── passwords.py     bcrypt via passlib
@@ -192,7 +194,7 @@ What's covered:
 - **End-to-end** (1) — login → import → review → lock → run → leaderboard,
   all via HTTP, with a mocked adapter.
 
-83 tests, ~35 s on a laptop.
+84 tests, ~35 s on a laptop.
 
 ---
 
@@ -204,6 +206,12 @@ What's covered:
 | `SESSION_SECRET`          | `dev-secret-change-me`                         | Signs session cookies. **Set in prod.**            |
 | `OPENAI_API_KEY`          | unset                                          | Required for `openai:*` model IDs.                 |
 | `OPENROUTER_API_KEY`      | unset                                          | Required for `openrouter:*` model IDs.             |
+| `ANTHROPIC_API_KEY`       | unset                                          | Required for `anthropic:*` model IDs.              |
+| `GOOGLE_API_KEY`          | unset                                          | Required for `google:*` (Gemini) model IDs.        |
+| `GROQ_API_KEY`            | unset                                          | Required for `groq:*` model IDs.                   |
+| `MISTRAL_API_KEY`         | unset                                          | Required for `mistral:*` model IDs.                |
+| `MISTRAL_AGENT_ID`        | unset                                          | If set, adds `mistral-agent:<id>` to the picker (beta Agents API). |
+| `MISTRAL_AGENT_VERSION`   | `0`                                            | Passed to Agents API ``agent_version``.           |
 | `OPENROUTER_HTTP_REFERER` | `https://github.com/inno-llm-scoring`          | Sent to OpenRouter for traffic routing.            |
 | `OPENROUTER_APP_TITLE`    | `LLM Arena`                                    |                                                    |
 | `SEED_ADMIN_USERNAME`     | `admin`                                        |                                                    |
@@ -216,14 +224,20 @@ What's covered:
 
 | Provider              | Status         | Notes                                                                  |
 | --------------------- | -------------- | ---------------------------------------------------------------------- |
-| `openai:*`            | implemented    | Uses the Responses API. Reads `OPENAI_API_KEY`. Retries + backoff.     |
-| `openrouter:*`        | implemented    | Chat Completions. Reads `OPENROUTER_API_KEY` (falls back to `OPENAI_API_KEY` for dev). |
-| `anthropic:*`         | stub           | Wire the Anthropic SDK or use `openrouter:anthropic/...` instead.       |
-| `google:*`            | stub           | Wire the Google SDK or use `openrouter:google/...` instead.             |
+| `openai:*`            | implemented    | Responses API. `OPENAI_API_KEY`.                       |
+| `openrouter:*`        | implemented    | Chat Completions. `OPENROUTER_API_KEY` (falls back to `OPENAI_API_KEY` for dev). |
+| `anthropic:*`         | implemented    | Messages API. `ANTHROPIC_API_KEY`.                     |
+| `google:*`            | implemented    | Gemini via `google-genai`. `GOOGLE_API_KEY`.         |
+| `groq:*`              | implemented    | Chat Completions. `GROQ_API_KEY`.                      |
+| `mistral:*`           | implemented    | Chat completions. `MISTRAL_API_KEY`.              |
+| `mistral-agent:*`     | implemented    | Agents beta (`beta.conversations.start`). Same API key; set `MISTRAL_AGENT_ID` for picker entry. |
 
-The OpenRouter adapter is the recommended path for four-model
-benchmarks: a single API key gives you OpenAI, Anthropic, Google, Meta,
-Mistral, and dozens more under one billing relationship.
+If **all four** native keys (`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`,
+`GROQ_API_KEY`, `MISTRAL_API_KEY`) are set, the run form defaults to one
+model per provider. Otherwise, OpenRouter (if configured) or OpenAI-direct
+presets apply.
+
+OpenRouter remains convenient when you want **one** key across vendors.
 
 ---
 

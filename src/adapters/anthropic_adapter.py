@@ -1,36 +1,24 @@
-"""Anthropic (Claude) adapter — stub.
-
-Not wired to the real Anthropic SDK yet. Kept so the adapter surface is
-visible alongside the OpenAI / OpenRouter implementations.
-
-To finish this adapter:
-    1. Add `anthropic` to `requirements.txt` / `pyproject.toml`.
-    2. Read `ANTHROPIC_API_KEY` from the environment in `__init__`.
-    3. Implement `run()` mirroring `OpenAIAdapter.run()`:
-         - call `client.messages.create(...)`
-         - retry/backoff on transient errors
-         - return `ModelResult(model_id=..., raw_text=..., meta={...})`
-    4. Register the adapter in `src/adapters/registry.py` (the `provider:model`
-       lookup used by `src.benchmark.runs.execute_run`).
-
-Until then, the recommended path is to route Claude traffic through the
-OpenRouter adapter (`openrouter:anthropic/...`), which is already wired.
-"""
+"""Anthropic (Claude) adapter — Messages API."""
 
 from __future__ import annotations
 
 import os
+import time
+from typing import Any, Dict, Optional
 
+from ._retry import is_retryable_exception, sleep_backoff_s
 from .base import ModelAdapter, ModelResult
 
 
+def _message_text(message: Any) -> str:
+    parts: list[str] = []
+    for block in getattr(message, "content", []) or []:
+        if getattr(block, "type", None) == "text":
+            parts.append(getattr(block, "text", "") or "")
+    return "".join(parts)
+
+
 class AnthropicAdapter(ModelAdapter):
-    """Placeholder for the Anthropic provider.
-
-    `run()` raises `NotImplementedError` so callers fail fast and loudly
-    rather than silently producing empty results.
-    """
-
     def __init__(self, model: str):
         self.model = model
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -41,8 +29,78 @@ class AnthropicAdapter(ModelAdapter):
     def is_configured(self) -> bool:
         return bool(self.api_key)
 
-    def run(self, prompt: str, **kwargs) -> ModelResult:
-        raise NotImplementedError(
-            "AnthropicAdapter is a stub. Wire the Anthropic SDK here "
-            "(env: ANTHROPIC_API_KEY). See module docstring for the steps."
+    def run(
+        self,
+        prompt: str,
+        *,
+        temperature: Optional[float] = 0.0,
+        max_output_tokens: Optional[int] = 2048,
+        timeout_s: Optional[float] = 120.0,
+        max_retries: int = 3,
+        **kwargs: Any,
+    ) -> ModelResult:
+        if not self.api_key:
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY is not set. Export it or add it to .env."
+            )
+
+        try:
+            import anthropic
+        except Exception as e:  # pragma: no cover
+            raise RuntimeError(
+                "Missing dependency. Install: pip install anthropic"
+            ) from e
+
+        client = anthropic.Anthropic(
+            api_key=self.api_key,
+            timeout=timeout_s,
+            max_retries=0,
         )
+
+        create_kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": max_output_tokens or 2048,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if temperature is not None:
+            create_kwargs["temperature"] = temperature
+        create_kwargs.update(kwargs)
+
+        last_exc: Optional[Exception] = None
+        message: Any = None
+        t0 = time.time()
+        for attempt in range(1, max_retries + 1):
+            try:
+                message = client.messages.create(**create_kwargs)
+                last_exc = None
+                break
+            except Exception as e:
+                last_exc = e
+                if attempt >= max_retries or not is_retryable_exception(e):
+                    break
+                time.sleep(sleep_backoff_s(attempt))
+
+        elapsed_ms = int((time.time() - t0) * 1000)
+        if last_exc is not None:
+            msg = str(last_exc).strip()
+            raise RuntimeError(
+                f"Anthropic request failed for model '{self.model}' "
+                f"after {max_retries} attempt(s): {msg}"
+            ) from last_exc
+
+        raw_text = _message_text(message)
+        usage = getattr(message, "usage", None)
+        meta: Dict[str, Any] = {
+            "provider": "anthropic",
+            "model": self.model,
+            "response_id": getattr(message, "id", None),
+            "elapsed_ms": elapsed_ms,
+            "stop_reason": getattr(message, "stop_reason", None),
+            "retries": max_retries,
+        }
+        if usage is not None:
+            meta["usage"] = (
+                usage if isinstance(usage, dict) else getattr(usage, "__dict__", str(usage))
+            )
+
+        return ModelResult(model_id=self.id(), raw_text=raw_text, meta=meta)
