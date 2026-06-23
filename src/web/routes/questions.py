@@ -19,9 +19,11 @@ POST /questions/{set_id}/revert            transition: -> draft (with reason)
 
 from __future__ import annotations
 
+import difflib
 import shutil
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 from urllib.parse import quote
 
@@ -41,6 +43,8 @@ from src.benchmark.queries import (
     count_by_status,
     get_question,
     get_set_with_questions,
+    list_set_audit,
+    list_set_history,
     list_question_versions,
     list_sets,
 )
@@ -324,6 +328,7 @@ async def preview(
 def detail(
     request: Request,
     set_id: str,
+    section: str = "questions",
     user: User = Depends(require_login),
     session: Session = Depends(get_session),
 ):
@@ -338,6 +343,12 @@ def detail(
         # The polished detail template iterates ``q.choices.items()`` —
         # adapt our ORM list-of-dicts to the {letter: text} dict it wants.
         q.choices = {c["label"]: c["text"] for c in (q.choices_json or [])}
+
+    active_section = (
+        section if section in {"questions", "history", "audit"} else "questions"
+    )
+    history = list_set_history(session, set_id=set_id) if active_section == "history" else []
+    audit = list_set_audit(session, set_id=set_id) if active_section == "audit" else []
 
     # Eligible reviewers for the submit-for-review picker: every active user
     # whose role is reviewer or admin, EXCEPT the current user (the author
@@ -363,6 +374,9 @@ def detail(
         qs=qs,
         set=qs,  # alias for the design-system templates
         questions=questions,
+        section=active_section,
+        history=history,
+        audit=audit,
         counts_by_cat=counts_by_cat,
         eligible_reviewers=eligible_reviewers,
         can_view_answers=True,
@@ -522,6 +536,118 @@ def question_detail(
         versions=versions,
         can_edit=can_edit,
         error=None,
+    )
+
+
+def _question_diff_text(version) -> list[str]:
+    choice_lines = [
+        f"{choice.get('label', '')}. {choice.get('text', '')}"
+        for choice in (version.choices_json or [])
+    ]
+    return [
+        f"QID: {version.qid}",
+        f"Category: {version.category}",
+        f"Prompt: {version.prompt}",
+        *choice_lines,
+        f"Correct answer: {version.correct_answer or '—'}",
+        f"Scoring rule: {version.scoring_rule}",
+    ]
+
+
+def _diff_pane_lines(left_lines: list[str], right_lines: list[str], *, side: str):
+    rows = []
+    left_no = 0
+    right_no = 0
+    for line in difflib.ndiff(left_lines, right_lines):
+        marker = line[:2]
+        text = line[2:]
+        if marker == "? ":
+            continue
+        if marker == "  ":
+            left_no += 1
+            right_no += 1
+            rows.append(
+                {
+                    "kind": "same",
+                    "no": left_no if side == "left" else right_no,
+                    "text": text,
+                }
+            )
+        elif marker == "- ":
+            left_no += 1
+            if side == "left":
+                rows.append({"kind": "remove", "no": left_no, "text": text})
+        elif marker == "+ ":
+            right_no += 1
+            if side == "right":
+                rows.append({"kind": "add", "no": right_no, "text": text})
+    return rows
+
+
+@router.get("/{set_id}/{qid}/diff", response_class=HTMLResponse)
+def question_diff(
+    request: Request,
+    set_id: str,
+    qid: str,
+    v: Optional[int] = None,
+    left_v: Optional[int] = None,
+    right_v: Optional[int] = None,
+    user: User = Depends(require_login),
+    session: Session = Depends(get_session),
+):
+    q = get_question(session, set_id=set_id, qid=qid)
+    if q is None:
+        raise HTTPException(status_code=404, detail="Question not found.")
+    qs = session.get(QuestionSet, set_id)
+
+    previous_versions = list_question_versions(session, set_id=set_id, qid=qid)
+    for version in previous_versions:
+        actor = session.get(User, version.changed_by_id) if version.changed_by_id else None
+        version.author = actor.username if actor else "system"
+        version.changed_at_human = str(version.changed_at) if version.changed_at else ""
+
+    current_version = SimpleNamespace(
+        qid=q.qid,
+        set_id=q.set_id,
+        version=q.version,
+        category=q.category,
+        prompt=q.prompt,
+        choices_json=q.choices_json,
+        correct_answer=q.correct_answer,
+        scoring_rule=q.scoring_rule,
+        changed_at=q.updated_at,
+        changed_at_human=str(q.updated_at) if q.updated_at else "",
+        author="current",
+    )
+    versions = sorted(
+        [*previous_versions, current_version], key=lambda item: item.version
+    )
+    if len(versions) < 2:
+        raise HTTPException(status_code=404, detail="No prior versions to diff.")
+
+    by_version = {item.version: item for item in versions}
+    selected_left = left_v or v or versions[-2].version
+    selected_right = right_v or by_version.get(selected_left + 1, versions[-1]).version
+    left = by_version.get(selected_left)
+    right = by_version.get(selected_right)
+    if left is None or right is None or left.version >= right.version:
+        raise HTTPException(status_code=400, detail="Invalid version comparison.")
+
+    left_lines = _question_diff_text(left)
+    right_lines = _question_diff_text(right)
+
+    return render(
+        request,
+        "questions/diff.html",
+        current_user=user,
+        active_tab="questions",
+        set=qs,
+        qid=qid,
+        versions=versions,
+        left=left,
+        right=right,
+        diff_left=_diff_pane_lines(left_lines, right_lines, side="left"),
+        diff_right=_diff_pane_lines(left_lines, right_lines, side="right"),
     )
 
 

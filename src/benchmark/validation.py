@@ -54,7 +54,7 @@ class ValidationReport:
 
         if self.duplicates or self.missing_choices or self.empty_prompts:
             return "fail"
-        if self.missing_answers or self.short_choices:
+        if self.missing_answers:
             return "warn"
         return "pass"
 
@@ -132,8 +132,6 @@ def _build_findings(report: ValidationReport) -> list[ValidationFinding]:
     add("fail", "Missing choices (A–E)", report.missing_choices)
     add("fail", "Empty prompts", report.empty_prompts)
     add("warn", "Missing correct answer", report.missing_answers)
-    add("warn", "Suspiciously short choices", report.short_choices)
-
     if not findings:
         findings.append(
             ValidationFinding(

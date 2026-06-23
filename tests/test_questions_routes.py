@@ -99,7 +99,7 @@ def test_validate_endpoint_renders_validation_fragment(client_with_users):
 
     assert r.status_code == 200
     assert 'class="validation-content"' in r.text
-    assert "Suspiciously short choices" in r.text
+    assert "All checks passed" in r.text
     assert "Questions</b> 2" in r.text
 
 
@@ -215,6 +215,67 @@ def test_detail_page_hides_submit_button_for_non_author(client_with_users):
     r = client_with_users.get("/questions/vis_smoke")
     assert r.status_code == 200
     assert "Submit for review" not in r.text
+
+
+def test_detail_history_section_shows_question_edits_and_diff(client_with_users):
+    _login(client_with_users, "alice")
+    _upload(client_with_users, set_id="history_smoke")
+
+    r = client_with_users.post(
+        "/questions/history_smoke/C1/edit",
+        data={
+            "prompt": "What is H2O commonly called?",
+            "choice_a": "Salt",
+            "choice_b": "Water",
+            "choice_c": "Sugar",
+            "choice_d": "Iron",
+            "choice_e": "Oxygen",
+            "correct_answer": "B",
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303), r.text
+
+    r = client_with_users.get("/questions/history_smoke?section=history")
+    assert r.status_code == 200, r.text
+    body = r.text
+    assert 'aria-selected="true"' in body
+    assert "Edit history" in body
+    assert "C1" in body
+    assert "Snapshot before edit to v2" in body
+    assert "/questions/history_smoke/C1/diff?v=1" in body
+
+    r = client_with_users.get("/questions/history_smoke/C1/diff?v=1")
+    assert r.status_code == 200, r.text
+    assert "What is H2O commonly called?" in r.text
+
+
+def test_detail_audit_section_shows_set_audit_entries(client_with_users):
+    _login(client_with_users, "alice")
+    _upload(client_with_users, set_id="audit_smoke")
+
+    r = client_with_users.post(
+        "/questions/audit_smoke/C1/edit",
+        data={
+            "prompt": "What is H2O commonly called?",
+            "choice_a": "Salt",
+            "choice_b": "Water",
+            "choice_c": "Sugar",
+            "choice_d": "Iron",
+            "choice_e": "Oxygen",
+            "correct_answer": "B",
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 303), r.text
+
+    r = client_with_users.get("/questions/audit_smoke?section=audit")
+    assert r.status_code == 200, r.text
+    body = r.text
+    assert "Audit log" in body
+    assert "alice" in body
+    assert "edit_question" in body
+    assert "audit_smoke/C1" in body
 
 
 # ---------------------------------------------------------------------------

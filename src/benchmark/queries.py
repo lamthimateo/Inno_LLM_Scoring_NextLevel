@@ -7,12 +7,19 @@ the UI layer can compose lookups without dragging in mutation code.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from src.storage.models import Question, QuestionSet, SetStatus, User
+from src.storage.models import (
+    AuditLog,
+    Question,
+    QuestionSet,
+    QuestionVersion,
+    SetStatus,
+    User,
+)
 
 
 @dataclass
@@ -33,6 +40,31 @@ class SetListRow:
     @property
     def reviewer_or_dash(self) -> str:
         return self.reviewer_username or "—"
+
+
+@dataclass
+class QuestionHistoryRow:
+    qid: str
+    version: int
+    author: str
+    changed_at: Any
+    summary: str
+
+    @property
+    def changed_at_human(self) -> str:
+        return str(self.changed_at) if self.changed_at else ""
+
+
+@dataclass
+class AuditLogRow:
+    at: Any
+    actor: str
+    action: str
+    detail: str
+
+    @property
+    def at_human(self) -> str:
+        return str(self.at) if self.at else ""
 
 
 def list_sets(
@@ -140,3 +172,64 @@ def list_question_versions(session: Session, *, set_id: str, qid: str):
         .where(QuestionVersion.set_id == set_id, QuestionVersion.qid == qid)
         .order_by(QuestionVersion.version.desc())
     ).scalars().all()
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def list_set_history(session: Session, *, set_id: str) -> list[QuestionHistoryRow]:
+    """Return question edit snapshots for a set, newest first."""
+
+    rows = session.execute(
+        select(QuestionVersion, User.username)
+        .outerjoin(User, User.id == QuestionVersion.changed_by_id)
+        .where(QuestionVersion.set_id == set_id)
+        .order_by(QuestionVersion.changed_at.desc(), QuestionVersion.version.desc())
+    ).all()
+
+    return [
+        QuestionHistoryRow(
+            qid=version.qid,
+            version=version.version,
+            author=username or "system",
+            changed_at=version.changed_at,
+            summary=f"Snapshot before edit to v{version.version + 1}",
+        )
+        for version, username in rows
+    ]
+
+
+def list_set_audit(session: Session, *, set_id: str) -> list[AuditLogRow]:
+    """Return audit entries that target this set or one of its questions."""
+
+    question_target_prefix = f"{_escape_like(set_id)}/%"
+    rows = session.execute(
+        select(AuditLog, User.username)
+        .outerjoin(User, User.id == AuditLog.actor_id)
+        .where(
+            or_(
+                AuditLog.target_id == set_id,
+                AuditLog.target_id.like(question_target_prefix, escape="\\"),
+            )
+        )
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+    ).all()
+
+    audit: list[AuditLogRow] = []
+    for entry, username in rows:
+        detail = entry.target_id or ""
+        if entry.payload_json:
+            payload = ", ".join(
+                f"{key}={value}" for key, value in entry.payload_json.items()
+            )
+            detail = f"{detail} ({payload})" if detail else payload
+        audit.append(
+            AuditLogRow(
+                at=entry.created_at,
+                actor=username or "system",
+                action=entry.action,
+                detail=detail,
+            )
+        )
+    return audit

@@ -1,0 +1,33 @@
+<div class="validation-content">
+  <div class="row-tight mb-3">
+    <span class="chip"><b>Questions</b> {{ report.total }}</span>
+    {% for cat, n in report.by_category.items() %}
+      <span class="chip"><b>{{ cat }}</b> · {{ n }}</span>
+    {% endfor %}
+  </div>
+
+  <ul class="validation-list">
+    {% for check in validation %}
+      <li class="v-{{ check.level }}">
+        <svg class="v-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          {% if check.level == 'pass' %}
+          <path d="M5 10l3.5 3.5L15 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          {% elif check.level == 'warn' %}
+          <path d="M10 3l8 14H2l8-14z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="M10 9v3M10 15v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          {% else %}
+          <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M7 7l6 6M13 7l-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          {% endif %}
+        </svg>
+        <div>
+          <div class="fw-600">{{ check.title }}</div>
+          {% if check.detail %}<div class="v-detail">{{ check.detail }}</div>{% endif %}
+          {% if check.qids %}
+            <div class="muted text-sm">{{ check.qids|join(', ') }}</div>
+          {% endif %}
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+</div>

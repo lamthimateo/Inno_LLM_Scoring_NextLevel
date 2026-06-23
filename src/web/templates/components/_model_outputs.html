@@ -1,0 +1,22 @@
+{# Context: model_outputs — list of {model_id, raw_text} #}
+{% if model_outputs %}
+<section class="card">
+  <div class="card-header">
+    <h2>Model outputs</h2>
+    <span class="muted text-sm">Raw text returned by each API (full response blob)</span>
+  </div>
+  <div class="stack-tight">
+    {% for mo in model_outputs %}
+      <details class="border-b" style="border-color: var(--border); padding-bottom: 0.75rem;">
+        <summary class="cursor-pointer fw-600">
+          <code class="kbd">{{ mo.model_id }}</code>
+          <span class="muted text-sm fw-400"> — click to expand</span>
+        </summary>
+        <pre class="text-sm text-mono mt-2 mb-0"
+             style="max-height: 28rem; overflow: auto; white-space: pre-wrap; word-break: break-word;
+                    padding: 0.75rem; background: var(--surface-2); border-radius: var(--radius); border: 1px solid var(--border);">{{ mo.raw_text }}</pre>
+      </details>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}

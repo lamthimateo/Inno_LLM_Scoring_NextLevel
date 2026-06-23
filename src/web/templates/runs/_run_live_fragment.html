@@ -1,0 +1,161 @@
+{#
+  Live run dashboard fragment: model progress + job stats + leaderboard.
+  Swapped by HTMX every 2s while the job is queued or running.
+
+  Context: run, job, model_runs (from run_model_slots), rows (leaderboard dicts).
+#}
+<div class="stack run-live-stack"
+     {% if job.status in ('queued', 'running') %}
+     hx-get="{{ url_for('runs.detail_fragment', run_id=run.run_id) }}"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+  <div class="card run-models">
+    <div class="card-header">
+      <h3>Model progress</h3>
+      <span class="muted text-sm">
+        {% if job.status == 'running' %}
+          <span class="dot good" style="display:inline-block; animation: pulse 1.4s ease-in-out infinite; vertical-align: middle;"></span>
+          live · updates every 2 s
+        {% else %}
+          {{ job.status }}
+        {% endif %}
+      </span>
+    </div>
+
+    <div class="model-progress">
+      {% for m in model_runs %}
+        <div class="model-row {{ 'has-error' if m.error_message else '' }}">
+          <div class="m-name">
+            <span>{{ m.label or m.model_id }}</span>
+            <code class="kbd">{{ m.model_id }}</code>
+          </div>
+          <div class="progress {{ 'indeterminate' if m.status == 'running' and (m.percent is none or m.percent == 0) else '' }}">
+            <div class="bar-fill" style="width: {{ (m.percent or (0 if m.status != 'done' else 100)) }}%;"></div>
+          </div>
+          <div class="m-pct">
+            {% if m.status == 'done' %}100%
+            {% elif m.percent is not none and m.percent > 0 %}{{ m.percent }}%
+            {% else %}—{% endif %}
+          </div>
+          <div style="text-align:right;">
+            {% if m.status == 'cancelled' %}
+              {% with status='queued', status_label='Cancelled' %}{% include "components/_status_badge.html" %}{% endwith %}
+            {% else %}
+              {% with status=m.status %}{% include "components/_status_badge.html" %}{% endwith %}
+            {% endif %}
+          </div>
+          {% if m.error_message %}
+            <div class="model-error">
+              {{ m.error_message }}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <section class="card stat-row">
+    <div class="stat">
+      <span class="stat-label muted text-xs">Status</span>
+      <strong class="stat-value">
+        {% with status=job.status %}{% include "components/_status_badge.html" %}{% endwith %}
+      </strong>
+    </div>
+    <div class="stat">
+      <span class="stat-label muted text-xs">Progress</span>
+      <strong class="stat-value">{{ job.progress_done }} / {{ job.progress_total }}</strong>
+    </div>
+    <div class="stat">
+      <span class="stat-label muted text-xs">Models scored</span>
+      <strong class="stat-value">{{ rows | length }}</strong>
+    </div>
+    <div class="stat">
+      <span class="stat-label muted text-xs">Started</span>
+      <strong class="stat-value muted">{{ (job.started_at | string) if job.started_at else '—' }}</strong>
+    </div>
+  </section>
+
+  {% if job.progress_total %}
+    <div class="progress">
+      <div class="bar-fill"
+           style="width: {{ (job.progress_done * 100 // job.progress_total) if job.progress_total else 0 }}%;"></div>
+    </div>
+  {% endif %}
+
+  {% if job.message %}
+    <div class="alert alert-info">
+      <div class="alert-body"><div>{{ job.message }}</div></div>
+    </div>
+  {% endif %}
+  {% if job.error %}
+    <div class="alert alert-error">
+      <svg class="alert-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M10 6v5M10 14v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <div class="alert-body">
+        <div class="alert-title">One or more models failed</div>
+        <div class="muted text-sm">Provider errors are shown under the affected model above.</div>
+        <details class="technical-error mt-2">
+          <summary>Show technical details</summary>
+          <pre>{{ job.error }}</pre>
+        </details>
+      </div>
+    </div>
+  {% endif %}
+
+  <section class="card">
+    <div class="card-header"><h2>Leaderboard</h2></div>
+    {% if rows %}
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th class="num">Total</th>
+                <th class="num">Correct</th>
+                <th class="num">Wrong</th>
+                <th class="num">Blank</th>
+                <th class="num">Chemistry</th>
+                <th class="num">Emotions</th>
+                <th class="num">Math</th>
+                <th class="num">3D</th>
+                <th class="num">No-knowledge</th>
+                <th class="num">Contradiction</th>
+                <th class="num">Format violations</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+                <tr>
+                  <td class="text-mono">{{ r.model_id }}</td>
+                  <td class="num">
+                    <span class="score-tag">
+                      <span class="dot {{ 'good' if r.total is not none and r.total >= 0 else 'bad' }}"></span>
+                      <strong>{{ r.total }}</strong>
+                    </span>
+                  </td>
+                  <td class="num">{{ r.correct }}</td>
+                  <td class="num">{{ r.wrong }}</td>
+                  <td class="num">{{ r.blank }}</td>
+                  <td class="num">{{ r.chemistry }}</td>
+                  <td class="num">{{ r.emotions }}</td>
+                  <td class="num">{{ r.math }}</td>
+                  <td class="num">{{ r.reasoning3d }}</td>
+                  <td class="num">{{ r.no_knowledge }}</td>
+                  <td class="num">{{ r.contradiction }}</td>
+                  <td class="num">{{ r.format_violations }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% else %}
+      <p class="muted">No models have finished scoring yet.</p>
+    {% endif %}
+  </section>
+</div>
