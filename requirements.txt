@@ -11,7 +11,6 @@ psycopg[binary]>=3.2,<3.3
 alembic>=1.13,<2
 
 # Auth
-passlib[bcrypt]>=1.7.4,<2
 bcrypt>=4.2,<5
 
 # Background jobs

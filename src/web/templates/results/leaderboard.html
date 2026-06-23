@@ -67,6 +67,97 @@
 </div>
 
 <div class="stack mt-4">
+  {% if model_errors %}
+  <section class="card">
+    <div class="card-header">
+      <h2>Model failures</h2>
+      <span class="muted text-sm">Providers that did not return a scorable response.</span>
+    </div>
+    <div class="stack-tight">
+      {% for err in model_errors %}
+        <div class="alert alert-error">
+          <svg class="alert-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M10 6v5M10 14v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <div class="alert-body">
+            <div class="alert-title">{{ err.model_id }}</div>
+            <div>{{ err.error }}</div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if answer_comparison %}
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2>Answer comparison</h2>
+        <p class="muted text-sm">Question-by-question model output versus the correct answer.</p>
+      </div>
+      <div class="chips">
+        <span class="chip"><span class="dot good"></span> correct</span>
+        <span class="chip"><span class="dot bad"></span> wrong</span>
+        <span class="chip"><span class="dot warn"></span> blank</span>
+      </div>
+    </div>
+    <div class="table-wrap answer-compare-wrap">
+      <div class="table-scroll">
+        <table class="table answer-compare-table">
+          <thead>
+            <tr>
+              <th>qid</th>
+              <th>question</th>
+              <th>correct answer</th>
+              {% for model_id in comparison_models %}
+                <th title="{{ model_id }}">{{ model_id }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in answer_comparison %}
+              <tr>
+                <td>
+                  <code class="kbd">{{ row.qid }}</code>
+                  <div class="muted text-xs mt-1">{{ row.category }}</div>
+                </td>
+                <td class="answer-question">{{ row.prompt }}</td>
+                <td class="answer-cell answer-correct-key">
+                  <strong>{{ row.correct_answer or '—' }}</strong>
+                  {% if row.correct_text %}
+                    <span>{{ row.correct_text }}</span>
+                  {% endif %}
+                </td>
+                {% for cell in row.model_cells %}
+                  <td class="answer-cell answer-{{ cell.status }}">
+                    <div class="answer-letter">
+                      <strong>{{ cell.given_answer or '—' }}</strong>
+                      {% if cell.score is not none %}
+                        <span class="score">{{ '%+d'|format(cell.score) }}</span>
+                      {% else %}
+                        <span class="score">n/a</span>
+                      {% endif %}
+                    </div>
+                    {% if cell.given_text %}
+                      <span>{{ cell.given_text }}</span>
+                    {% elif cell.status == 'blank' %}
+                      <span>No answer returned.</span>
+                    {% elif cell.status == 'missing' %}
+                      <span>No parsed answer saved.</span>
+                    {% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
   {% include "components/_model_outputs.html" %}
 </div>
 {% endblock %}

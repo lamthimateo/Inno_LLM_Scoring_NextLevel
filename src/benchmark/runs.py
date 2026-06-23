@@ -30,6 +30,7 @@ The HTTP route ``POST /runs/{run_id}/cancel`` flips two switches:
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -72,6 +73,9 @@ class RunError(ValueError):
 
 _cancellation_events: dict[str, threading.Event] = {}
 _cancellation_lock = threading.Lock()
+_API_KEY_RE = re.compile(
+    r"\b(?:sk-[A-Za-z0-9_-]{12,}|[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{12,})\b"
+)
 
 
 def request_cancellation(run_id: str) -> None:
@@ -101,6 +105,35 @@ def clear_cancellation(run_id: str) -> None:
 
     with _cancellation_lock:
         _cancellation_events.pop(run_id, None)
+
+
+def _friendly_model_error(exc: Exception) -> str:
+    """Return a short, UI-safe provider error without stack traces or secrets."""
+
+    msg = str(exc).strip() or exc.__class__.__name__
+    msg = " ".join(msg.split())
+    msg = _API_KEY_RE.sub("[redacted]", msg)
+    low = msg.lower()
+
+    if "api_key_invalid" in low or "invalid x-api-key" in low:
+        return (
+            "Invalid API key for this provider. Check the matching key in .env, "
+            "then recreate app/worker."
+        )
+    if "missing api key" in low or "not configured" in low:
+        return "Missing API key for this provider. Add it to .env or deselect this model."
+    if "authentication" in low or "unauthorized" in low or "401" in low:
+        return "Authentication failed with the provider. Check the API key for this model."
+    if "rate limit" in low or "429" in low:
+        return "Provider rate limit reached. Wait a bit or use fewer models."
+    if "timeout" in low or "timed out" in low:
+        return "Provider request timed out."
+
+    return msg[:500] + ("..." if len(msg) > 500 else "")
+
+
+def _model_error_summary(errors: list[dict[str, Any]]) -> str:
+    return "; ".join(f"{e['model_id']}: {e['error']}" for e in errors)
 
 
 # ---------------------------------------------------------------------------
@@ -234,10 +267,13 @@ def execute_run(session: Session, run_id: str) -> Job:
             log.info("run.model_done run_id=%s model=%s", run_id, model_id)
         except Exception as exc:
             session.rollback()
-            errors.append({"model_id": model_id, "error": str(exc)})
+            errors.append({"model_id": model_id, "error": _friendly_model_error(exc)})
             log.exception("run.model_failed run_id=%s model=%s", run_id, model_id)
             # Reload job after rollback
             job = session.get(Job, run_id)
+            payload = dict(job.payload_json or {})
+            payload["model_errors"] = errors
+            job.payload_json = payload
             job.progress_done = idx
             completed = idx
             session.flush()
@@ -257,17 +293,26 @@ def execute_run(session: Session, run_id: str) -> Job:
             f"({remaining} not started)."
         )
         if errors:
-            job.error = "; ".join(f"{e['model_id']}: {e['error']}" for e in errors)
+            payload = dict(job.payload_json or {})
+            payload["model_errors"] = errors
+            job.payload_json = payload
+            job.error = _model_error_summary(errors)
     elif errors and len(errors) == len(model_ids):
         job.status = JobStatus.ERROR.value
-        job.error = "; ".join(f"{e['model_id']}: {e['error']}" for e in errors)
+        payload = dict(job.payload_json or {})
+        payload["model_errors"] = errors
+        job.payload_json = payload
+        job.error = _model_error_summary(errors)
     elif errors:
         # Partial success: mark done but record errors in the payload.
         job.status = JobStatus.DONE.value
         job.message = (
             f"{len(model_ids) - len(errors)}/{len(model_ids)} models succeeded."
         )
-        job.error = "; ".join(f"{e['model_id']}: {e['error']}" for e in errors)
+        payload = dict(job.payload_json or {})
+        payload["model_errors"] = errors
+        job.payload_json = payload
+        job.error = _model_error_summary(errors)
     else:
         job.status = JobStatus.DONE.value
         job.message = f"All {len(model_ids)} models succeeded."
@@ -358,6 +403,11 @@ def run_model_slots(session: Session, *, run_id: str, job: Job) -> list[dict[str
     model_ids: list[str] = list(payload.get("model_ids") or [])
     if not model_ids:
         return []
+    structured_errors = {
+        item.get("model_id"): item.get("error")
+        for item in list(payload.get("model_errors") or [])
+        if isinstance(item, dict) and item.get("model_id")
+    }
 
     stmt = select(ModelRun).where(ModelRun.run_id == run_id).order_by(ModelRun.model_run_id)
     by_mid: dict[str, ModelRun] = {mr.model_id: mr for mr in session.scalars(stmt).all()}
@@ -380,7 +430,7 @@ def run_model_slots(session: Session, *, run_id: str, job: Job) -> list[dict[str
                     "label": short,
                     "status": "done",
                     "percent": 100,
-                    "error_message": None,
+                    "error_message": structured_errors.get(mid),
                 }
             )
             continue
@@ -414,7 +464,7 @@ def run_model_slots(session: Session, *, run_id: str, job: Job) -> list[dict[str
                 "label": short,
                 "status": slot_status,
                 "percent": pct,
-                "error_message": None,
+                "error_message": structured_errors.get(mid),
             }
         )
 

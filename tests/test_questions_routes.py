@@ -91,6 +91,18 @@ def test_import_creates_draft_set_and_redirects_to_detail(client_with_users):
     assert "draft" in r.text.lower()
 
 
+def test_validate_endpoint_renders_validation_fragment(client_with_users):
+    _login(client_with_users, "alice")
+    _upload(client_with_users, set_id="validate_smoke")
+
+    r = client_with_users.get("/questions/validate_smoke/validate")
+
+    assert r.status_code == 200
+    assert 'class="validation-content"' in r.text
+    assert "Suspiciously short choices" in r.text
+    assert "Questions</b> 2" in r.text
+
+
 def test_full_workflow_via_http(client_with_users):
     _login(client_with_users, "alice")
     _upload(client_with_users, set_id="benchmark_v1")

@@ -12,7 +12,6 @@ dependencies = [
   "SQLAlchemy>=2.0.36,<2.1",
   "psycopg[binary]>=3.2,<3.3",
   "alembic>=1.13,<2",
-  "passlib[bcrypt]>=1.7.4,<2",
   "bcrypt>=4.2,<5",
   "redis>=5.0,<6",
   "rq>=1.16,<2",
