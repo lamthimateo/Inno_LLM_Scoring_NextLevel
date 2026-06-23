@@ -54,7 +54,7 @@ def client_with_users():
     s = db_module.SessionLocal()
     try:
         register_user(s, username="mateo", password="strongpass1", role=UserRole.AUTHOR.value)
-        register_user(s, username="nikoleta", password="strongpass1", role=UserRole.REVIEWER.value)
+        register_user(s, username="jarod", password="strongpass1", role=UserRole.REVIEWER.value)
         s.commit()
     finally:
         s.close()
@@ -78,7 +78,7 @@ def _logout(client: TestClient) -> None:
 
 
 def _import_and_lock_set(client: TestClient, *, set_id: str) -> None:
-    """End-to-end lock flow via HTTP: mateo imports, nikoleta reviews+locks."""
+    """End-to-end lock flow via HTTP: mateo imports, jarod reviews+locks."""
 
     _login(client, "mateo")
     r = client.post(
@@ -93,20 +93,20 @@ def _import_and_lock_set(client: TestClient, *, set_id: str) -> None:
     from src.storage.models import User
     from sqlalchemy import select as _select
 
-    nikoleta_id = s.execute(
-        _select(User.id).where(User.username == "nikoleta")
+    jarod_id = s.execute(
+        _select(User.id).where(User.username == "jarod")
     ).scalar_one()
     s.close()
 
     r = client.post(
         f"/questions/{set_id}/submit-review",
-        data={"reviewer_id": nikoleta_id},
+        data={"reviewer_id": jarod_id},
         follow_redirects=False,
     )
     assert r.status_code in (302, 303), r.text
 
     _logout(client)
-    _login(client, "nikoleta")
+    _login(client, "jarod")
 
     r = client.post(f"/questions/{set_id}/approve", follow_redirects=False)
     assert r.status_code in (302, 303), r.text
@@ -126,7 +126,7 @@ def test_runs_list_modal_shows_locked_set_authored_by_other_user(client_with_use
     """
 
     _import_and_lock_set(client_with_users, set_id="bench")
-    # Stay logged in as nikoleta (reviewer, not the author).
+    # Stay logged in as jarod (reviewer, not the author).
     r = client_with_users.get("/runs")
     assert r.status_code == 200
     body = r.text
@@ -190,7 +190,7 @@ def test_cancel_route_marks_run_as_cancelled_and_303(client_with_users):
     """Owner cancels their own queued run -> 303 redirect, job=cancelled, audit row written, in-process flag set."""
 
     _import_and_lock_set(client_with_users, set_id="bench")
-    # The lock flow leaves nikoleta logged in; switch back to mateo so the
+    # The lock flow leaves jarod logged in; switch back to mateo so the
     # run is "owned" by him for the cancel permission check.
     _logout(client_with_users)
     _login(client_with_users, "mateo")
@@ -246,6 +246,60 @@ def test_cancel_route_returns_204_for_htmx_request(client_with_users):
         clear_cancellation("run_test_htmx")
 
 
+def test_run_detail_shows_structured_model_error(client_with_users):
+    _import_and_lock_set(client_with_users, set_id="bench_failure")
+    _logout(client_with_users)
+    _login(client_with_users, "mateo")
+
+    s = db_module.SessionLocal()
+    try:
+        user_id = s.query(User.id).filter_by(username="mateo").scalar()
+        s.add_all(
+            [
+                Run(
+                    run_id="run_failed_model",
+                    set_id="bench_failure",
+                    started_by_id=user_id,
+                ),
+                Job(
+                    id="run_failed_model",
+                    kind="evaluation_run",
+                    status=JobStatus.ERROR.value,
+                    set_id="bench_failure",
+                    run_id="run_failed_model",
+                    created_by_id=user_id,
+                    payload_json={
+                        "model_ids": ["anthropic:claude-sonnet-4-20250514"],
+                        "model_errors": [
+                            {
+                                "model_id": "anthropic:claude-sonnet-4-20250514",
+                                "error": (
+                                    "Authentication failed with the provider. "
+                                    "Check the API key for this model."
+                                ),
+                            }
+                        ],
+                    },
+                    error=(
+                        "anthropic:claude-sonnet-4-20250514: "
+                        "Authentication failed with the provider."
+                    ),
+                    progress_total=1,
+                    progress_done=1,
+                ),
+            ]
+        )
+        s.commit()
+    finally:
+        s.close()
+
+    r = client_with_users.get("/runs/run_failed_model")
+
+    assert r.status_code == 200
+    assert "Authentication failed with the provider" in r.text
+    assert "anthropic:claude-sonnet-4-20250514" in r.text
+
+
 def test_cancel_route_forbidden_for_other_non_admin_users(client_with_users):
     """A reviewer who didn't start the run cannot cancel it; admin would be allowed."""
 
@@ -254,7 +308,7 @@ def test_cancel_route_forbidden_for_other_non_admin_users(client_with_users):
     _insert_queued_run(
         run_id="run_test_forbidden", set_id="bench", started_by_username="mateo"
     )
-    # After _import_and_lock_set we are logged in as nikoleta (the reviewer).
+    # After _import_and_lock_set we are logged in as jarod (the reviewer).
     # She did NOT start the run and is not an admin -> 403.
     r = client_with_users.post(
         "/runs/run_test_forbidden/cancel", follow_redirects=False

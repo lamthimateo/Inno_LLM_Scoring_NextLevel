@@ -53,7 +53,7 @@ it creates three accounts so the two-person review can be demonstrated:
 | ----------- | -------------- | -------- |
 | `admin`     | `inno-admin`   | admin    |
 | `mateo`     | `mateo1234`    | author   |
-| `nikoleta`  | `nikoleta1234` | reviewer |
+| `jarod`     | `jarod1234`    | reviewer |
 
 > Override the admin password with `SEED_ADMIN_PASSWORD=...` in `.env`.
 > Set `SEED_DEMO_USERS=0` to skip the two demo accounts.
@@ -66,7 +66,7 @@ it creates three accounts so the two-person review can be demonstrated:
 3. On the set detail page click **Submit for review** and pass the
    reviewer's user id (you can grab it from `docker compose exec
    postgres psql -U benchmark -c 'select id, username from users;'`).
-4. Log out and log back in as **nikoleta** (reviewer). Open the set,
+4. Log out and log back in as **jarod** (reviewer). Open the set,
    click **Approve**, then **Lock**.
 5. Switch to the **Results** tab and click **+ New run**. Pick the
    locked set; the four default models are pre-filled. Click **Start
@@ -216,7 +216,7 @@ What's covered:
 | `OPENROUTER_APP_TITLE`    | `LLM Arena`                                    |                                                    |
 | `SEED_ADMIN_USERNAME`     | `admin`                                        |                                                    |
 | `SEED_ADMIN_PASSWORD`     | `inno-admin`                                   | Must be ≥ 8 chars. **Change in prod.**             |
-| `SEED_DEMO_USERS`         | `1`                                            | Set to `0` to skip the mateo/nikoleta accounts.    |
+| `SEED_DEMO_USERS`         | `1`                                            | Set to `0` to skip the mateo/jarod accounts.       |
 
 ---
 

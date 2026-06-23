@@ -1,17 +1,14 @@
-"""Password hashing helpers.
-
-Wraps ``passlib`` so the rest of the code doesn't care about the algorithm.
-We use bcrypt with a sensible cost factor; ``passlib.CryptContext`` makes
-it easy to add new schemes later without rehashing the whole user table.
-"""
+"""Password hashing helpers (bcrypt)."""
 
 from __future__ import annotations
 
-from passlib.context import CryptContext
+import re
+
+import bcrypt
 
 
-# rounds=12 is the passlib default; explicit so a future bump is reviewable.
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
+ROUNDS = 12
+_BCRYPT_COST_RE = re.compile(r"^\$2[aby]\$(\d+)\$")
 
 
 def hash_password(plain: str) -> str:
@@ -19,7 +16,8 @@ def hash_password(plain: str) -> str:
 
     if not plain:
         raise ValueError("password must not be empty")
-    return _pwd_ctx.hash(plain)
+    digest = bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt(rounds=ROUNDS))
+    return digest.decode("ascii")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -28,12 +26,15 @@ def verify_password(plain: str, hashed: str) -> bool:
     if not plain or not hashed:
         return False
     try:
-        return _pwd_ctx.verify(plain, hashed)
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("ascii"))
     except (ValueError, TypeError):
         return False
 
 
 def needs_rehash(hashed: str) -> bool:
-    """Return True if the hash uses a deprecated scheme or weaker cost factor."""
+    """Return True if the hash uses a weaker cost factor than :data:`ROUNDS`."""
 
-    return _pwd_ctx.needs_update(hashed)
+    match = _BCRYPT_COST_RE.match(hashed or "")
+    if not match:
+        return True
+    return int(match.group(1)) < ROUNDS

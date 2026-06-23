@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from src.auth.dependencies import require_login
 from src.benchmark.importing import (
     ImportError as ImportFailure,
+    ParsedQuestion,
     import_questions,
     parse_questions_from_text,
 )
@@ -390,6 +391,44 @@ def detail(
                 or _is_author_of(user, qs)
             )
         ),
+    )
+
+
+@router.get("/{set_id}/validate", response_class=HTMLResponse, name="questions.validate")
+def validate(
+    request: Request,
+    set_id: str,
+    user: User = Depends(require_login),
+    session: Session = Depends(get_session),
+):
+    found = get_set_with_questions(session, set_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail="Question set not found.")
+    qs, questions = found
+    parsed = [
+        ParsedQuestion(
+            qid=q.qid,
+            category=q.category,
+            prompt=q.prompt,
+            choices=[
+                {"label": c.get("label", ""), "text": c.get("text", "")}
+                for c in (q.choices_json or [])
+            ],
+            correct_answer=q.correct_answer,
+            source_file=f"set:{qs.set_id}",
+        )
+        for q in questions
+    ]
+    report = validate_questions(parsed)
+    return render(
+        request,
+        "questions/_validation_fragment.html",
+        current_user=user,
+        active_tab="questions",
+        qs=qs,
+        set=qs,
+        validation=report.findings,
+        report=report,
     )
 
 
