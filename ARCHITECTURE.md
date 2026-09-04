@@ -4,8 +4,7 @@ This document describes the architecture of **LLM Arena**: modules, runtime
 topology, data flow, and the relational schema.
 
 The system was rewritten from a CLI-only tool into a web app in v0.2.0; this
-document reflects the current GUI-based, Postgres-backed system. The
-historical CLI design lives in `docs/archive/tasks/` for reference.
+document reflects the current GUI-based, Postgres-backed system.
 
 ---
 
