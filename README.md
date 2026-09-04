@@ -48,15 +48,19 @@ Open <http://localhost:8000>. You'll see the login screen.
 
 The `app` container runs `python -m src.web.seed` on first boot. By default
 it creates three accounts so the two-person review can be demonstrated:
+`admin` (admin), `mateo` (author), and `jarod` (reviewer).
 
-| Username    | Password       | Role     |
-| ----------- | -------------- | -------- |
-| `admin`     | `inno-admin`   | admin    |
-| `mateo`     | `mateo1234`    | author   |
-| `jarod`     | `jarod1234`    | reviewer |
+No passwords ship in this repo — set them in `.env` before first boot:
 
-> Override the admin password with `SEED_ADMIN_PASSWORD=...` in `.env`.
-> Set `SEED_DEMO_USERS=0` to skip the two demo accounts.
+| Variable              | Account          |
+| --------------------- | ---------------- |
+| `SEED_ADMIN_PASSWORD` | `admin`          |
+| `SEED_MATEO_PASSWORD` | `mateo`          |
+| `SEED_JAROD_PASSWORD` | `jarod`          |
+
+Any left unset fall back to a dev-only default and log a warning on boot —
+fine for a local demo, not for anything reachable outside your machine.
+Set `SEED_DEMO_USERS=0` to skip the two demo accounts entirely.
 
 ### Demo walk-through
 
@@ -215,7 +219,9 @@ What's covered:
 | `OPENROUTER_HTTP_REFERER` | `https://github.com/inno-llm-scoring`          | Sent to OpenRouter for traffic routing.            |
 | `OPENROUTER_APP_TITLE`    | `LLM Arena`                                    |                                                    |
 | `SEED_ADMIN_USERNAME`     | `admin`                                        |                                                    |
-| `SEED_ADMIN_PASSWORD`     | `inno-admin`                                   | Must be ≥ 8 chars. **Change in prod.**             |
+| `SEED_ADMIN_PASSWORD`     | dev-only default (see code)                    | Must be ≥ 8 chars. **Set explicitly outside dev.** |
+| `SEED_MATEO_PASSWORD`     | dev-only default (see code)                    | Password for the `mateo` (author) demo account.    |
+| `SEED_JAROD_PASSWORD`     | dev-only default (see code)                    | Password for the `jarod` (reviewer) demo account.  |
 | `SEED_DEMO_USERS`         | `1`                                            | Set to `0` to skip the mateo/jarod accounts.       |
 
 ---

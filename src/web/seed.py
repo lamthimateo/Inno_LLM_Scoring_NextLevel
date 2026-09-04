@@ -5,9 +5,11 @@ Reads:
 - ``SEED_ADMIN_USERNAME`` (default ``admin``)
 - ``SEED_ADMIN_PASSWORD`` (default ``admin``)
 - ``SEED_DEMO_USERS=1``    create author/reviewer demo users for the demo
+- ``SEED_<USERNAME>_PASSWORD`` (e.g. ``SEED_MATEO_PASSWORD``) overrides a demo
+  user's password; falls back to a dev-only default with a warning if unset.
 
 Idempotent: admin password is left alone if the user already exists.
-Demo users (when ``SEED_DEMO_USERS=1``) always get their documented passwords reset.
+Demo users (when ``SEED_DEMO_USERS=1``) always get their resolved passwords reset.
 """
 
 from __future__ import annotations
@@ -29,8 +31,8 @@ log = logging.getLogger(__name__)
 DEFAULT_ADMIN_PASSWORD = "inno-admin"
 
 DEMO_USERS = [
-    {"username": "mateo", "password": "mateo1234", "role": UserRole.AUTHOR.value},
-    {"username": "jarod", "password": "jarod1234", "role": UserRole.REVIEWER.value},
+    {"username": "mateo", "default_password": "mateo1234", "role": UserRole.AUTHOR.value},
+    {"username": "jarod", "default_password": "jarod1234", "role": UserRole.REVIEWER.value},
 ]
 
 _LEGACY_REVIEWER_USERNAME = "nikoleta"
@@ -67,7 +69,14 @@ def _migrate_legacy_demo_reviewer(session) -> None:
 def _demo_password(username: str) -> str:
     for u in DEMO_USERS:
         if u["username"] == username:
-            return u["password"]
+            env_key = f"SEED_{username.upper()}_PASSWORD"
+            password = os.environ.get(env_key) or u["default_password"]
+            if password == u["default_password"]:
+                log.warning(
+                    "seed: using DEFAULT password for demo user %r. Set %s in .env.",
+                    username, env_key,
+                )
+            return password
     raise KeyError(username)
 
 
@@ -109,7 +118,12 @@ def seed() -> None:
         if os.environ.get("SEED_DEMO_USERS", "").strip() in {"1", "true", "yes"}:
             _migrate_legacy_demo_reviewer(session)
             for u in DEMO_USERS:
-                _ensure_demo_user(session, **u)
+                _ensure_demo_user(
+                    session,
+                    username=u["username"],
+                    password=_demo_password(u["username"]),
+                    role=u["role"],
+                )
                 log.info("seed: ensured demo user %r role=%s", u["username"], u["role"])
 
 
