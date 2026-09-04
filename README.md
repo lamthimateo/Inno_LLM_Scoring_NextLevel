@@ -65,7 +65,7 @@ Set `SEED_DEMO_USERS=0` to skip the two demo accounts entirely.
 ### Demo walk-through
 
 1. Log in as **mateo** (author).
-2. Go to **Questions → + Import new set**. Drop any `.txt` from
+2. Go  to **Questions → + Import new set**. Drop any `.txt` from
    `imports/answer_key/` and pick a `set_id` (e.g. `benchmark_v1`).
 3. On the set detail page click **Submit for review** and pass the
    reviewer's user id (you can grab it from `docker compose exec
