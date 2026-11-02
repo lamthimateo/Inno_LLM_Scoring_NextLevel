@@ -1,535 +1,244 @@
-# LLM Arena — Design System
+# LLM Arena — Design System ("Arena dark")
 
-_Version 0.2 · Day-1 of the 5-day GUI rewrite · author: UI design worker_
+Source of truth for the look of the web UI. The implementation is three
+stylesheets, loaded in this order by `src/web/templates/base.html`:
 
-This document describes the visual & interaction system used by the rewritten
-web UI. It is the source of truth for the tokens, components, and patterns
-implemented in `static/css/app.css` and the Jinja2 templates under
-`templates/`.
+| File | Holds | Rule |
+|---|---|---|
+| `static/css/tokens.css` | Every colour, size, space, radius, duration, z-index — both themes | The only file that contains raw values |
+| `static/css/base.css` | Reset, typography, app shell, layout helpers, utilities, breakpoints | Uses tokens only |
+| `static/css/components.css` | Buttons, forms, badges, tables, tabs, alerts, modal, progress, page patterns | Uses tokens only |
 
-The visual language is **inherited from the existing leaderboard renderer**
-(`src/web/leaderboard.py`), then extended into a complete app shell. We kept:
+No CSS framework, no build step. The only vendored JS is `htmx.min.js`; the
+theme toggle and small behaviours live in `static/js/app.js`.
 
-- Dark-by-default theme with a `data-theme="light"` override.
-- Glassy panels (`color-mix(in oklab, var(--panel) 92%, transparent)` +
-  `backdrop-filter: blur(10px)`).
-- Radial accent gradients on the background (blue / green / amber).
-- Sticky toolbar pattern, score dots, comparison cards, and the leaderboard
-  table.
-
-> **No CSS framework dependency.** Vanilla CSS only. Vanilla JS only.
-> The only vendored JS dependency is `htmx.min.js` (v1.9.12, ~48 KB).
-> The Dockerfile copies these files straight in — no build step.
+> Replaces the v0.2 document (glassy panels, radial gradients, `app.css`).
+> That version is in git history; `static/css/app.css` is no longer linked.
 
 ---
 
-## 1. Design principles
+## 1. Principles
 
-1. **Information-dense but breathable.** This is a daily tool. Tables, badges
-   and stat cards beat hero sections.
-2. **Status legibility at a glance.** Color-coded badges everywhere a workflow
-   state matters (`draft / in_review / approved / locked` for sets,
-   `queued / running / done / error` for runs).
-3. **One primary action per page.** The user should always know what the
-   next step is — there is at most one `btn-primary` per page header.
-4. **Keyboard-friendly.** Visible focus rings, sensible tab order, `Escape`
-   closes modals, password fields autocomplete correctly.
-5. **Dark mode by default**, light toggle persists via `localStorage` under
-   the key `inno_theme`.
-6. **Progressive enhancement via HTMX.** Forms still work without JS where
-   it matters. HTMX is layered on for the interactive bits.
+1. **A dense tool, not a landing page.** Tables, badges and stat rows beat
+   hero sections. Dark by default, calm, one accent.
+2. **One accent.** Blue marks the primary action and *live* state, nothing
+   else. Success / warning / danger are reserved for status.
+3. **State is never colour alone.** Every status badge is dot + colour + word.
+   "Not yet started" states (draft, queued, cancelled, approved-but-unlocked)
+   use a hollow dot, "active" states a filled dot, `running` a pulsing dot.
+4. **Separation by borders and background steps, not shadows.** Hairline
+   1 px borders; surfaces step `bg → surface-1 → surface-2 → surface-3`.
+5. **Motion only means "live".** The sole animation is the pulsing dot / accent
+   bar on running work. `prefers-reduced-motion` switches it off.
+6. **Small, strict scale.** Six font sizes, a 4 px spacing grid, radius never
+   above 6 px.
+7. **No raw values outside `tokens.css`.** If a value is needed twice, it is a
+   token.
 
 ---
 
 ## 2. Tokens
 
-All tokens are CSS custom properties on `:root`, overridden under
-`[data-theme="light"]`. See `static/css/app.css §1 Tokens` for the full list.
+### 2.1 Colour (both themes)
 
-### 2.1 Color
+Theme is set by `data-theme="dark|light"` on `<html>`. A boot script in
+`base.html` applies the saved choice (`localStorage["inno_theme"]`), else the
+system preference, else dark, before first paint. The light theme is designed
+separately (not an inversion): lower-chroma status colours, darker accent.
 
-| Token              | Dark value              | Light value           | Use                                  |
-| ------------------ | ----------------------- | --------------------- | ------------------------------------ |
-| `--bg`             | `#0b1020`               | `#f7f8fb`             | Page background                      |
-| `--panel`          | `rgba(255,255,255,.06)` | `#ffffff`             | Card / panel surface                 |
-| `--panel-2`        | `rgba(255,255,255,.08)` | `#ffffff`             | Slightly elevated surface            |
-| `--text`           | `rgba(255,255,255,.92)` | `#0f172a`             | Primary text                         |
-| `--muted`          | `rgba(255,255,255,.62)` | `#556070`             | Secondary text / labels              |
-| `--border`         | `rgba(255,255,255,.12)` | `rgba(15,23,42,.12)`  | Hairlines                            |
-| `--accent`         | `#60a5fa`               | `#2563eb`             | Primary action / links               |
-| `--accent-2`       | `#a78bfa`               | `#7c3aed`             | Gradient pair / brand mark           |
-| `--good`           | `#22c55e`               | `#16a34a`             | Success, positive scores             |
-| `--bad`            | `#f87171`               | `#dc2626`             | Error, wrong answers                 |
-| `--warn`           | `#fbbf24`               | `#b45309`             | Pending review                       |
-| `--info`           | `#38bdf8`               | `#0284c7`             | Info, chemistry category             |
+| Token | Dark | Light | Use |
+|---|---|---|---|
+| `--c-bg` | `#0D0F12` | `#F3F4F6` | Page background |
+| `--c-surface-1` | `#13161A` | `#FFFFFF` | Cards, sidebar, table body |
+| `--c-surface-2` | `#191D22` | `#F7F8FA` | Inputs, secondary buttons, hover |
+| `--c-surface-3` | `#20252B` | `#ECEEF1` | Active nav item, table header, pressed |
+| `--c-border` | `#262B32` | `#DDE0E5` | Hairlines, dividers |
+| `--c-border-strong` | `#353B44` | `#C5CAD2` | Control outlines |
+| `--c-text` | `#E6E8EB` | `#14171C` | Body and headings |
+| `--c-text-muted` | `#9AA3AE` | `#4F5864` | Secondary text, labels, meta |
+| `--c-text-faint` | `#6E7782` | `#8A93A0` | **Disabled / decorative only** |
+| `--c-accent` | `#4DA3FF` | `#0B63CE` | Primary button, focus ring, live bar |
+| `--c-accent-hover` / `-active` | `#6BB3FF` / `#3A92EE` | `#0A56B3` / `#084A9A` | Primary button states |
+| `--c-accent-text` | `#4DA3FF` | `#0B5CBF` | Links and accent-coloured text |
+| `--c-accent-soft` | `#12263B` | `#E3EEFB` | Running badge fill, selection |
+| `--c-on-accent` | `#07111C` | `#FFFFFF` | Text on the accent |
+| `--c-success` (+`-bg`, `-border`) | `#3FB97F` | `#077A4C` | done / locked / approved |
+| `--c-warning` (+`-bg`, `-border`) | `#D9A441` | `#955800` | in review |
+| `--c-danger` (+`-bg`, `-border`) | `#F0616D` | `#C42B3B` | error, destructive |
+| `--c-cat-c/e/m/a/n/x` | see file | see file | Question-category tints by QID prefix (chemistry, emotions, math, 3D, no-knowledge, contradiction) |
+| `--c-on-cat` | `#0D0F12` | `#FFFFFF` | Text on a category tint |
+| `--c-scrim` | `rgba(5,6,8,.72)` | `rgba(15,17,21,.45)` | Modal backdrop |
 
-#### Semantic status palette
+### 2.2 Contrast (computed from the values above, WCAG 2.x relative luminance)
 
-Workflow + run statuses use dedicated tokens so badges and progress bars stay
-in sync if we re-skin later:
+All text pairs meet 4.5:1 (AA, normal text) in both themes.
 
-| Token                | Maps to       | Use                       |
-| -------------------- | ------------- | ------------------------- |
-| `--status-draft`     | slate / muted | Set status `draft`        |
-| `--status-review`    | warn          | Set status `in_review`    |
-| `--status-approved`  | accent        | Set status `approved`     |
-| `--status-locked`    | good          | Set status `locked`       |
-| `--status-queued`    | slate / muted | Run status `queued`       |
-| `--status-running`   | accent        | Run status `running` (pulsing dot) |
-| `--status-done`      | good          | Run status `done`         |
-| `--status-error`     | bad           | Run status `error`        |
+| Pair | Dark | Light |
+|---|---|---|
+| text on bg | 15.63 | 16.32 |
+| text on surface-1 | 14.78 | 17.96 |
+| text on surface-3 | 12.57 | 15.45 |
+| text-muted on bg | 7.52 | 6.55 |
+| text-muted on surface-1 | 7.11 | 7.21 |
+| text-muted on surface-3 | 6.04 | 6.20 |
+| accent-text on bg / surface-1 | 7.31 / 6.91 | 5.79 / 6.37 |
+| on-accent on accent / accent-hover | 7.23 / 8.61 | 5.69 / 7.01 |
+| success on success-bg | 6.42 | 4.72 |
+| warning on warning-bg | 7.05 | 5.09 |
+| danger on danger-bg | 5.38 | 4.69 |
+| on-cat on cat-c … cat-x | 7.54 – 10.58 | 4.63 – 5.72 |
 
-#### Category palette (QID prefix → color)
+Known limits, stated plainly:
 
-| Prefix | Name          | Token         |
-| ------ | ------------- | ------------- |
-| `C`    | chemistry     | `--info`      |
-| `E`    | emotions      | `--accent-2`  |
-| `M`    | math          | `--good`      |
-| `A`    | reasoning3d   | `--warn`      |
-| `N`    | no_knowledge  | `--muted`     |
-| `X`    | contradiction | `--bad`       |
+- **`--c-text-faint` fails AA** (4.00 dark, 3.11 light on surface-1). That is
+  why it is restricted to disabled controls and decoration and must never
+  carry information.
+- **Control borders are below 3:1** (`--c-border-strong` on surface-1 is 1.61
+  dark, 1.65 light), so WCAG 1.4.11 (non-text contrast) is not met for input
+  outlines. Inputs are still identified by label, position and the 2 px accent
+  focus ring (6.9:1 / 5.7:1). Darkening the outline is a candidate follow-up.
 
-### 2.2 Typography
+### 2.3 Typography
 
-| Token        | Value                                                       |
-| ------------ | ----------------------------------------------------------- |
-| `--font-sans`| `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, ...` |
-| `--font-mono`| `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, ...`       |
+One sans, one mono. Mono (`.mono`, `code`, `.num`) is for ids, scores and
+anything that must align; numbers use tabular figures.
 
-Scale:
+| Token | Size | Use |
+|---|---|---|
+| `--t-xs` | 11 px | Badges, table headers, section labels (uppercase, `--tracking-caps`) |
+| `--t-sm` | 12 px | Secondary text, meta, code |
+| `--t-md` | 13 px | Tables, controls, dense body |
+| `--t-base` | 14 px | Default body |
+| `--t-lg` | 16 px | Section titles (`h2`) |
+| `--t-xl` | 22 px | Page titles (`h1`) |
 
-| Token       | Size | Use                              |
-| ----------- | ---- | -------------------------------- |
-| `--fs-xs`   | 11px | Badges, table headers (uppercase) |
-| `--fs-sm`   | 12px | Helper text, captions             |
-| `--fs-md`   | 13px | Table body, secondary controls    |
-| `--fs-base` | 14px | Default body                      |
-| `--fs-lg`   | 16px | Section titles                    |
-| `--fs-xl`   | 20px | Card titles                       |
-| `--fs-2xl`  | 26px | Auth-card heading                 |
-| `--fs-3xl`  | 34px | Page title (`h1`)                 |
+Weights: `--w-regular` 400, `--w-medium` 500, `--w-semibold` 600. Line heights
+`--lh-tight` 1.25 / `--lh-base` 1.5. Fonts: `--font-sans` (system stack),
+`--font-mono` (JetBrains Mono → system mono).
 
-Weights used: `500 / 600 / 700 / 750`. Letter-spacing is tightened slightly
-for headings (`-0.02em` ... `-0.03em`).
+### 2.4 Spacing, shape, sizing
 
-### 2.3 Spacing
+- **Spacing** (4 px grid): `--s-1` 4 · `--s-2` 8 · `--s-3` 12 · `--s-4` 16 ·
+  `--s-5` 20 · `--s-6` 24 · `--s-8` 32 · `--s-10` 40 · `--s-12` 48.
+- **Radius**: `--r-1` 2 · `--r-2` 4 · `--r-3` 6 (maximum anywhere).
+- **Borders**: `--bw` 1 px hairline, `--bw-bar` 2 px for active-state bars and
+  hollow status dots.
+- **Controls**: `--h-control` 32, `--h-control-sm` 24, `--h-row` 36,
+  `--h-topbar` 48.
+- **Layout widths**: `--w-sidebar` 224, `--w-content` 1440 max, `--w-aside`
+  320, `--w-modal` 520 / `--w-modal-lg` 720, `--w-auth` 360, `--w-form` 720.
+  Component widths (`--w-progress`, `--w-status`, `--w-field-*`, `--h-picker`,
+  `--h-pre`, …) are also tokens so no component hard-codes a pixel size.
+- **Icons**: `--icon` 16 px, `--icon-stroke` 1.5, line style, `currentColor`.
+- **Layers**: `--z-sticky` 10, `--z-modal` 200, `--z-toast` 300.
+- **Motion**: `--dur-1` 100 ms, `--dur-2` 160 ms, `--dur-live` 1600 ms,
+  `--ease` `cubic-bezier(.2,0,0,1)`.
 
-4-pixel grid: `--space-1` = 4px, `--space-2` = 8px, … `--space-10` = 72px.
-All component padding/gap values come from this scale.
-
-### 2.4 Radii
-
-| Token             | Value | Use                           |
-| ----------------- | ----- | ----------------------------- |
-| `--radius-sm`     | 8px   | Small chips, inline kbd       |
-| `--radius`        | 14px  | Buttons, inputs, chips        |
-| `--radius-lg`     | 16px  | Cards, table wraps            |
-| `--radius-xl`     | 22px  | Modals, auth card             |
-| `--radius-pill`   | 999px | Badges, score dots, progress  |
-
-### 2.5 Shadows & ring
-
-| Token            | Value                                       | Use            |
-| ---------------- | ------------------------------------------- | -------------- |
-| `--shadow`       | `0 14px 30px rgba(0,0,0,.28)` (dark)        | Cards          |
-| `--shadow-2`     | `0 10px 22px rgba(0,0,0,.22)` (dark)        | Toolbar, alerts|
-| `--shadow-pop`   | `0 20px 40px rgba(0,0,0,.38)` (dark)        | Modal, toast   |
-| `--ring`         | `0 0 0 3px rgba(96,165,250,.35)`            | Focus ring     |
-
-### 2.6 Motion
-
-| Token          | Value                                |
-| -------------- | ------------------------------------ |
-| `--transition` | `140ms cubic-bezier(.2,.7,.2,1)`     |
-
-Custom animations defined: `pulse` (running badge dot), `fade-in`, `pop-in`,
-`slide-in` (toast), `indeterminate` (progress bar), `shimmer` (skeletons).
-All animations short-circuit under `prefers-reduced-motion: reduce`.
-
-### 2.7 Layout
-
-| Token           | Value   | Use                  |
-| --------------- | ------- | -------------------- |
-| `--container`   | 1240px  | Max content width    |
-| `--nav-height`  | 60px    | Sticky nav offset    |
+Dynamic values that cannot be a token (leaderboard bar widths computed in JS)
+are passed through one custom property, `--w`, set inline and consumed by
+`width: var(--w)`.
 
 ---
 
-## 3. Responsive breakpoints
-
-We use very few breakpoints because most layouts are CSS-Grid based and adapt
-intrinsically. Hard breakpoints:
-
-| Breakpoint  | Effect                                                       |
-| ----------- | ------------------------------------------------------------ |
-| ≤ 980 px    | Two-column grids (`.grid-2`, `.grid-content`, `.grid-sidebar`) collapse to a single column. |
-| ≤ 800 px    | Diff view collapses to single column.                        |
-| ≤ 720 px    | Run model rows collapse to single column.                    |
-| ≤ 640 px    | Compare cards stack vertically.                              |
-
-There is no separate mobile breakpoint for the nav — the user-badge dropdown
-remains usable at narrow widths, just visually tighter.
-
----
-
-## 4. Layout primitives
-
-| Class             | What it does                                              |
-| ----------------- | --------------------------------------------------------- |
-| `.container`      | `max-width: 1240px` + 20px gutter, centered.              |
-| `.page`           | Vertical padding for main content area.                   |
-| `.page-header`    | Flex row with title + actions, wraps on narrow screens.   |
-| `.row`            | Flex row, wraps, gap = 12 px.                             |
-| `.row-tight`      | Flex row, wraps, gap = 8 px.                              |
-| `.stack`          | Flex column, gap = 12 px.                                 |
-| `.stack-tight`    | Flex column, gap = 8 px.                                  |
-| `.spread`         | Flex row, `justify-content: space-between`.               |
-| `.grid`           | CSS grid with gap = 16 px.                                |
-| `.grid-2`         | Two equal columns.                                        |
-| `.grid-3` `.grid-4` | Three / four equal columns.                             |
-| `.grid-content`   | Asymmetric 1.2fr / 0.8fr (main + sidebar).                |
-| `.grid-sidebar`   | Asymmetric 1.4fr / 0.6fr (denser sidebar).                |
-| `.divider`        | 1 px hairline with vertical breathing room.               |
-
----
-
-## 5. Components
-
-> Specs are concise; the canonical source is `static/css/app.css`.
-
-### 5.1 Button
-
-| Class                | Notes                                            |
-| -------------------- | ------------------------------------------------ |
-| `.btn`               | Base: 14px text, 14px radius, hairline border.   |
-| `.btn-primary`       | Gradient fill + glow, used for the one primary action per page. |
-| `.btn-danger`        | Red gradient — confirm dangerous actions with `data-confirm`. |
-| `.btn-success`       | Green gradient — rarely used; favor `.btn-primary`. |
-| `.btn-ghost`         | Transparent background, used for Cancel / Back.  |
-| `.btn-sm`, `.btn-lg` | Size modifiers.                                  |
-| `.btn-block`         | Full width.                                      |
-| `.btn-icon`          | Square icon button.                              |
-| `.btn-group`         | Joined segmented buttons.                        |
-
-### 5.2 Card
-
-`.card` is the unit of content. Variants: `.card-tight` (smaller padding),
-`.card-pad-lg` (luxurious padding), `.card.glass` (frosted), `.card-link`
-(adds hover-translate for clickable cards in result galleries).
-
-`.card-header` for the title row, `.card-footer` for action rows.
-
-### 5.3 Form controls
-
-| Class             | Notes                                              |
-| ----------------- | -------------------------------------------------- |
-| `.input` `.select` `.textarea` | Unified visual; focus uses `--ring`.   |
-| `.form-field`     | Label + control + help/error stack.                |
-| `.form-field.has-error` | Red border + error tint.                     |
-| `.form-row`       | Two-column form fields, collapses < 640 px.        |
-| `.field`          | Compact icon-prefixed inline field (toolbar use).  |
-| `.check` `.radio` | Custom checkbox/radio matching brand accent.       |
-| `.switch`         | Toggle switch for binary settings (used in run model preset). |
-| `.pw-strength`    | 4-segment strength meter, fed by JS (`data-pw-strength-for`). |
-
-### 5.4 Table
-
-`.table` + wrapper `.table-wrap` (rounded corners, shadow). Sortable variant:
-add `class="sortable"` and `data-sort="string|number|date"` to each header.
-The leaderboard table uses its own render path (full client-side, in
-`templates/results/leaderboard.html`) for snappy sort/compare.
-
-Visual touches:
-
-- Sticky header with blur.
-- Zebra rows + hover tint via `color-mix`.
-- Numeric columns use `font-variant-numeric: tabular-nums`.
-- `.table.compact` shrinks paddings for audit logs etc.
-- `tr.sel` highlights selected rows (compare panel).
-
-### 5.5 Badge
-
-| Class                  | Status                |
-| ---------------------- | --------------------- |
-| `.badge-draft`         | Set draft             |
-| `.badge-review`        | Set in_review         |
-| `.badge-approved`      | Set approved          |
-| `.badge-locked`        | Set locked            |
-| `.badge-queued`        | Run queued            |
-| `.badge-running`       | Run running (pulsing) |
-| `.badge-done`          | Run done              |
-| `.badge-error`         | Run error             |
-| `.badge-role-admin`    | User role             |
-| `.badge-role-author`   | User role             |
-| `.badge-role-reviewer` | User role             |
-| `.cat-{C,E,M,A,N,X}`   | Category chip         |
-
-Use the partial `templates/components/_status_badge.html` to render a
-status — it includes the colored dot and label automatically.
-
-### 5.6 Chip
-
-`.chip` is a passive pill (for filter chips, count chips, comparison
-indicators). `.chip.interactive` adds hover & cursor. `.chip.active` is the
-selected state in filter rows.
-
-### 5.7 Alert / Flash / Toast
-
-| Class                | Notes                                          |
-| -------------------- | ---------------------------------------------- |
-| `.alert-success`     | Green                                          |
-| `.alert-error`       | Red                                            |
-| `.alert-warn`        | Amber                                          |
-| `.alert-info`        | Blue                                           |
-| `.flash-stack`       | Sticky region at the top of the page for flashes — included by `base.html`. |
-| `.toast-region`      | Fixed bottom-right. Use `window.toast(msg, kind)` in JS. |
-| `.alert[data-auto-dismiss="ms"]` | Auto-fades after the given ms.     |
-
-### 5.8 Modal
-
-A modal is a `.modal-backdrop` + `.modal` pair. Open via
-`<button data-modal-target="#id">`. Close via `data-modal-close` on any
-element, click outside, or `Escape`. The "New run" modal in
-`templates/runs/new.html` is the reference implementation.
-
-### 5.9 Progress
-
-`.progress > .bar-fill` with inline `width: N%`. Add `.indeterminate` for an
-animated bar without known progress.
-
-### 5.10 Steps
-
-`.steps > .step` (with `.active` / `.done`) is the multi-step indicator used
-by the import flow.
-
-### 5.11 KBD / Code
-
-`.kbd` is a small pill that wraps mono text — used for IDs, shortcuts, and
-status hints. Inline `code.text-mono` is preferred for IDs longer than ~12 chars.
-
-### 5.12 Dropzone
-
-`.dropzone` with `data-dropzone` attribute is the drag-and-drop file picker
-used in the question import flow. `static/js/app.js` wires the dragover
-state and triggers a `change` event on the hidden file input.
-
-### 5.13 Diff view
-
-`.diff > .diff-pane > .diff-line` (`.add | .del | .ctx`). Used in
-`templates/questions/diff.html`. Server pre-computes per-line annotation;
-the CSS only colors them.
-
-### 5.14 Validation list
-
-`.validation-list li.v-pass | .v-warn | .v-fail` — used in two places:
-the import preview and the side panel on the question-set detail page. The
-detail-page panel auto-refreshes every 30 s via HTMX (`hx-trigger="every 30s"`)
-plus whenever a `set:revalidated` event is broadcast on `body`.
-
-### 5.15 Empty state
-
-`templates/components/_empty_state.html` accepts:
-
-- `empty_title`, `empty_body`
-- `empty_cta_label`, `empty_cta_href`
-- `empty_icon ∈ { 'inbox', 'flask', 'play', 'list' }`
-
-### 5.16 Skeletons
-
-`.skeleton` is a shimmering placeholder block. Use to fill space while HTMX
-is loading content into a panel — but only where the latency is noticeable.
-
----
-
-## 6. Interaction patterns (HTMX)
-
-We use HTMX 1.9.12 (vendored at `static/js/htmx.min.js`, ~48 KB). Major
-patterns:
-
-| Goal                                              | Attributes                                                                                |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Live filter a table without reload                | `hx-get="..." hx-trigger="input changed delay:300ms" hx-target="#table" hx-select="#table"` |
-| Modal-launched form (e.g. New run)                | `<button data-modal-target="#new-run-modal">` — no HTMX; the form posts normally and the server returns a redirect. |
-| Live progress on run detail                       | `<div hx-get="/runs/{id}/fragment" hx-trigger="every 2s" hx-target="this" hx-select=".run-models" hx-swap="outerHTML">` |
-| Inline status transition (Submit / Approve / Lock)| Plain HTML forms posting to action URLs; server returns redirect + sets HX-Trigger flash. |
-| Live preview while editing a question             | `<form hx-post="..." hx-target="#preview-pane" hx-trigger="input changed delay:300ms from:find input">` |
-| Validation revalidation                           | `hx-get="/sets/{id}/validate" hx-trigger="load, every 30s, set:revalidated from:body"`    |
-| Toast from HTMX response                          | Server sets `HX-Trigger: { "flash": { "message": "...", "kind": "success" } }`; JS in `app.js` listens for the `flash` event on body. |
-
-**Loading indicators.** Add `class="htmx-indicator"` to any element that
-should fade in during an in-flight request. The class is wired by HTMX
-automatically (`.htmx-request .htmx-indicator { opacity: 1 }`).
-
-**Error handling.** `app.js` listens for `htmx:responseError` and
-`htmx:sendError` and surfaces a toast — backend doesn't need to render error
-HTML for those.
-
----
-
-## 7. Accessibility
-
-- All interactive elements are real `<button>` / `<a>` / `<input>` — no
-  click-handlers on `<div>`s.
-- Focus ring (`--ring`) is **always visible** under `:focus-visible`, never
-  suppressed. We deliberately do NOT use `outline: none` without replacement.
-- Modals use `role="dialog" aria-modal="true"` and trap focus on the first
-  input. `Escape` closes them.
-- Tab badges use `role="tab" aria-selected="true|false"`.
-- Pulsing run-status badge avoids epilepsy concerns: amplitude is gentle,
-  frequency under 3 Hz, and is fully suppressed under
-  `prefers-reduced-motion: reduce`.
-- Color is never the only signal. Status badges combine a dot, a color, and
-  the status word. Score values combine a dot and a number.
-- Forms use `autocomplete="username"`, `current-password`, `new-password`
-  attributes correctly so password managers behave.
-- Sortable tables expose the sort direction in the header text (` ↑ ` / ` ↓ `)
-  alongside the color cue.
-
----
-
-## 8. Theme handling
-
-```js
-// Applied before paint by base.html to avoid flash of wrong theme.
-const saved = localStorage.getItem("inno_theme");
-const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-document.documentElement.setAttribute("data-theme", saved || (prefersDark ? "dark" : "light"));
-```
-
-Any element with `[data-theme-toggle]` flips and persists the theme. Labels
-that should reflect the active theme should carry `data-theme-label`.
-
-Storage key: `inno_theme`. Old key from the static leaderboard was
-`lb_theme` — we deliberately migrated to avoid leaking state from the
-embedded static dashboard.
-
----
-
-## 9. File map
+## 3. App shell
 
 ```
-static/
-├── css/
-│   └── app.css                    # design tokens + components + utilities
-├── js/
-│   ├── app.js                     # vanilla JS for theme, modals, drops, etc.
-│   └── htmx.min.js                # vendored HTMX 1.9.12
-└── img/
-    └── logo.png                   # brand mark (also used as favicon)
-
-templates/
-├── base.html                      # app shell (nav + flash)
-├── components/
-│   ├── _flash.html
-│   ├── _nav.html
-│   ├── _user_badge.html
-│   ├── _status_badge.html
-│   ├── _pagination.html
-│   └── _empty_state.html
-├── auth/
-│   ├── login.html
-│   ├── signup.html
-│   ├── forgot_password.html
-│   └── reset_password.html
-├── questions/
-│   ├── list.html
-│   ├── import.html
-│   ├── detail.html
-│   ├── edit.html
-│   └── diff.html
-├── runs/
-│   ├── list.html
-│   ├── new.html                   # modal partial + optional standalone page
-│   └── detail.html
-├── results/
-│   ├── list.html
-│   └── leaderboard.html
-└── errors/
-    ├── 404.html
-    └── 500.html
-
-docs/design/
-├── DESIGN_SYSTEM.md               # this file
-└── mockups/                       # hero mockups (optional — see §11)
+┌───────────┬──────────────────────────────────────────────┐
+│ LLM Arena │ Workspace / Runs                       [☼/☾] │  topbar, 48 px
+│           ├──────────────────────────────────────────────┤
+│ Dashboard │                                              │
+│ Question  │  page-header: title (h1) + one primary action│
+│  sets     │                                              │
+│ Runs      │  content, max 1440 px                        │
+│ Leaderb.  │                                              │
+│ Admin*    │                                              │
+│ ───────── │                                              │
+│ user ROLE │                                              │
+│ Account · │                                              │
+│ Log out   │                                              │
+└───────────┴──────────────────────────────────────────────┘
+   224 px                    * admins only
 ```
 
----
-
-## 10. Required context the backend should provide
-
-Templates expect these names in the Jinja context:
-
-- `current_user` — `None` when logged out, otherwise an object with
-  `.username`, `.email`, `.role ∈ {admin, author, reviewer}`.
-- `flashes` — iterable of `{category, message[, title]}` (categories:
-  `success | error | warn | info`).
-- `csrf_token()` callable — returns a CSRF token (or empty string if you
-  don't use CSRF; templates degrade gracefully).
-- `request` — Flask/FastAPI request object, used only for `request.args`.
-- A `url_for(endpoint, **kw)` callable matching Flask conventions. The
-  endpoints referenced (so far) are:
-  - `home`
-  - `login`, `logout`, `signup`, `forgot_password`, `reset_password`, `account`
-  - `questions.list`, `questions.import_view`, `questions.preview`,
-    `questions.detail`, `questions.edit`, `questions.edit_one`,
-    `questions.diff`, `questions.validate`, `questions.submit_review`,
-    `questions.approve`, `questions.lock`
-  - `runs.list`, `runs.new`, `runs.create`, `runs.detail`,
-    `runs.detail_fragment`, `runs.cancel`
-  - `results.list`, `results.leaderboard`, `results.export`,
-    `results.run_csv`, `results.run_json`
-  - `static`
-
-Page-specific data shapes are documented inline at the top of each template
-as a Jinja `{# … #}` comment.
+- Markup: `base.html` (shell, skip link, topbar, theme toggle, toast region) and
+  `components/_sidebar.html`.
+- The active nav item is chosen by `{% set active_tab = '…' %}` in the page
+  template (`home`, `questions`, `runs`, `results`, `admin`) and shown with a
+  2 px left bar and `surface-3` fill.
+- The breadcrumb in the topbar is a `{% block crumbs scoped %}` (needs `scoped`
+  to read `section_labels` from the shell). Pages may override it.
+- Logged-out pages (`login`, `register`) use `.shell.no-sidebar`.
+- Breakpoints (literal values, since CSS cannot use variables in `@media`):
+  **1100 px** stacks two-column pages and drops `grid-3` to two columns,
+  **860 px** turns the sidebar into a top strip, **640 px** stacks the diff and
+  compare panels and `grid-2/3`. Tables scroll inside `.table-scroll`; the page
+  itself does not scroll sideways (checked at 390 px).
 
 ---
 
-## 11. Hero mockups
+## 4. Components
 
-Three flagship-screen mockups live under `docs/design/mockups/`:
+Class names are the original vocabulary on purpose: templates, HTMX targets and
+`app.js` select on them, so the redesign changed the CSS and the markup around
+them without touching any `hx-*` attribute.
 
-| Screen           | File                                                         | Notes                                                                                                          |
-| ---------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| Login            | `docs/design/mockups/login.png`                              | Matches token palette, gradient brand mark, primary CTA.                                                       |
-| Questions list   | `docs/design/mockups/questions_list.png`                     | Filter chips with counts, color-coded status badges, info-dense table with sortable headers and "Open" actions. |
-| Leaderboard      | `docs/design/mockups/leaderboard.png`                        | Sticky filter toolbar, compare chips, 4-model preset rows with score dots, side comparison cards.              |
+| Component | Classes | Use it for |
+|---|---|---|
+| Button | `.btn`, `-primary`, `-secondary`, `-ghost`, `-danger`, `-sm`, `-lg`, `-icon`, `-block` | One `-primary` per page header. `-danger` only for destructive actions. `-ghost` for toolbar and icon buttons |
+| Form | `.field`, `.form-field`, `.form-row`, `.form-inline`, `.input`, `.select`, `.textarea`, `.has-error` | Labels above inputs; errors under the field with the danger colour **and** text |
+| Select list | `.select.model-picker` | The multi-select model picker (native `<select multiple>`; option text is reset so group labels stay uppercase and options do not) |
+| Badge | `.badge`, `-draft`, `-review`, `-approved`, `-locked`, `-done`, `-queued`, `-running`, `-cancelled`, `-error`, `-role-admin/-author/-reviewer` | Status of a question set or run. Always contains `.dot` + label text |
+| Chip / pill | `.chip`, `.chips`, `.pill`, `.kbd` | Filters, model ids, keyboard hints |
+| Card / stat | `.card`, `.card-header`, `.stat`, `.stat-row`, `.stat-label`, `.stat-value`, `.metric`, `.kv` | Grouped content; headline numbers |
+| Table | `.table`, `.table-wrap`, `.table-scroll`, `th.num` / `td.num`, `.sort-indicator` | Dense lists. Numbers right-aligned, mono, tabular. Header is `--t-xs` uppercase |
+| Progress | `.progress`, `.bar`, `.bar-fill`, `.is-live`, `.model-row`, `.model-progress`, `.m-name`, `.m-pct` | Run progress; per-model rows share one column grid so bars align |
+| Tabs | `.tabs`, `.tab` | Section switching within a page |
+| Alerts / toasts | `.alert`, `-info/-success/-warn/-error`, `.toast`, `.toast-region`, `.flash-stack` | Feedback. Icon + title + text; never colour alone |
+| Modal | `.modal-backdrop`, `.modal`, `-header/-body/-footer/-close` | New-run dialog; `app.js` moves focus to the first field on open (it does not restore focus on close) |
+| Empty state | `.empty` (partial `components/_empty_state.html`) | Text only plus one secondary action — no illustrations |
+| Pagination | `.pagination` (partial `components/_pagination.html`) | "Previous / Next" |
+| Page patterns | `.page-header`, `.toolbar`, `.steps` / `.step`, `.dropzone`, `.q-list` / `.q-item` / `.q-choice`, `.validation-list`, `.diff`, `.compare`, `.answer-*`, `.output-block`, `.auth-*` | Question import, review, version diff, leaderboard compare cards, per-question answers, raw model output, login |
 
-Mockups were generated as vision-research aids. They are **representative**,
-not pixel-perfect: the leaderboard mockup shows a slightly different brand
-mark/name (model drift). The implemented templates are the source of truth.
+### Status vocabulary
+
+| State | Badge | Dot |
+|---|---|---|
+| draft, queued, cancelled | neutral | hollow |
+| in review | warning | filled |
+| approved | success | hollow (approved, not locked) |
+| locked, done | success | filled |
+| running | accent | **pulsing** (only animated element) |
+| error | danger | filled |
+
+### Interaction
+
+- One focus style everywhere: 2 px accent outline, 2 px offset (`:focus-visible`).
+- `skip-link` jumps to `#main`.
+- Theme toggle: `[data-theme-toggle]` in the topbar; shows the icon of the
+  theme you would switch to; has an `aria-label`.
+- The only stored preference is `inno_theme` in `localStorage` (reads and
+  writes are wrapped in `try/catch`).
 
 ---
 
-## 12. Open design questions
+## 5. Adding or changing UI
 
-Captured here so the parent (or a follow-up worker) can resolve quickly:
+1. Need a new colour, size or duration? Add a token to `tokens.css` (both
+   themes for colours) and use it. Do not write a raw value in the other files.
+2. Reuse a component class before inventing one. If you add one, put it in the
+   matching section of `components.css`.
+3. Never remove or rename a class or `id` that an `hx-target`, `hx-include`,
+   `hx-swap` or `app.js` refers to. Check with `grep -rn` first.
+4. A new status needs dot + colour + word, and an entry in the table above.
+5. Check both themes and a 390 px viewport. Run `pytest -q`; the template smoke
+   tests render every page.
 
-1. **Signup default.** Currently we render a "signup disabled" notice when
-   `signup_enabled` is falsy. Decision needed: is signup enabled by default
-   in dev? In prod? Stored where?
-2. **Forgot-password mechanism.** The demo template displays the generated
-   token directly on the success page (no real email infra). Acceptable for
-   the school project? Or should we keep it but also gate it behind an admin
-   "reveal" toggle?
-3. **Run cancellation semantics.** UI exposes a cancel button while
-   `queued / running`. Backend behavior (kill task vs mark cancelled) is not
-   defined here.
-4. **Per-run leaderboard data shape.** The template assumes the same row
-   shape as `results/leaderboard/leaderboard.json` written by the current
-   exporter (model_id, total, chemistry, emotions, math, reasoning3d,
-   no_knowledge, contradiction, correct, wrong, blank, format_violations).
-   If we change shape, this template needs an update.
-5. **Audit log granularity.** We expose `(at, actor, action, detail)` — the
-   level of detail is up to the backend.
-6. **Account page.** Linked from the user-badge dropdown but not yet
-   implemented as a template — left for a follow-up day.
-7. **Role assignment UI.** Not part of this rewrite. Assume admin manages
-   roles via CLI for now.
-8. **Set-id vs slug.** We use `set_id` (already in the DB schema) as the
-   URL slug. Future: human-readable slugs?
+## 6. Known gaps
 
----
-
-_End of DESIGN_SYSTEM.md_
+- Native `<select multiple>` and `<input type="date">` can only be partly
+  styled; they follow the theme but keep browser chrome.
+- Sort indicators in table headers remain text arrows because `app.js` swaps
+  them.
+- Control outlines are below 3:1 (see 2.2).
+- `docs/design/mockups/*.png` are screenshots of the **old** design and are
+  kept only for history.

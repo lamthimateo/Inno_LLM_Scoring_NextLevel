@@ -43,9 +43,17 @@ workflow, a multi-provider adapter layer, and a static leaderboard export.
 | `worker`    | built from Dockerfile | RQ worker (not used by the current run path, see B below). |
 | `ollama`    | `ollama/ollama`      | Optional local models, only with `--profile local`.        |
 
-Static assets (CSS, JS, logo) are served from `/static` (repo-root
+Static assets (CSS, JS, favicon) are served from `/static` (repo-root
 `static/`). Templates live in `src/web/templates/` and are rendered via
 Jinja2 + HTMX for partial updates.
+
+The UI is one app shell (`base.html`: left sidebar with Dashboard / Question
+sets / Runs / Leaderboard / Admin, top bar with breadcrumb and theme toggle)
+styled by three stylesheets: `tokens.css` (all colour, size and motion tokens,
+dark and light), `base.css` (shell, layout, utilities) and `components.css`.
+Pages set `active_tab` to highlight their sidebar item. HTMX attributes and the
+class names they target are unchanged by the redesign. Full reference:
+[docs/design/DESIGN_SYSTEM.md](docs/design/DESIGN_SYSTEM.md).
 
 ---
 

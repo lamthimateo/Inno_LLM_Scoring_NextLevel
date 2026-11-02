@@ -176,9 +176,9 @@ _Not measured yet. Run the script on that machine and paste the table here._
 ├── imports/                 sample input data (answer-key text files)
 ├── pyproject.toml           deps (mirrored in requirements.txt)
 ├── requirements.txt
-├── static/                  css, js, logo — no build step
-│   ├── css/app.css          design tokens + components
-│   ├── img/logo.png         brand mark (also used as favicon)
+├── static/                  css, js, favicon — no build step
+│   ├── css/                 tokens.css (both themes) · base.css (shell) · components.css
+│   ├── img/favicon.svg      favicon
 │   └── js/                  htmx + a vanilla helper (theme/toast/modals)
 ├── src/
 │   ├── adapters/            model adapters

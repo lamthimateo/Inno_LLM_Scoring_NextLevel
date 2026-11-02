@@ -81,8 +81,8 @@ _ROUTES: dict[str, tuple[str, list[str]]] = {
 def url_for(endpoint: str, **kwargs: Any) -> str:
     """Flask-compatible URL builder for our Jinja templates.
 
-    Special case: ``url_for('static', filename='css/app.css')`` returns
-    ``/static/css/app.css`` to match the design-system templates.
+    Special case: ``url_for('static', filename='css/tokens.css')`` returns
+    ``/static/css/tokens.css`` to match the design-system templates.
     """
 
     if endpoint == "static":
