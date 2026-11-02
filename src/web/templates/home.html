@@ -1,38 +1,40 @@
 {% extends "base.html" %}
+{% set active_tab = 'home' %}
 {% block title %}Dashboard · LLM Arena{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div class="title">
-    <h1>Welcome back, {{ current_user.username }}.</h1>
+    <h1>Welcome back, {{ current_user.username }}</h1>
     <div class="sub">
-      Pick a tab above to start working. <strong>Questions</strong> is where you
-      import, review, and lock benchmark sets. <strong>Results</strong> shows the
-      leaderboard for every run you've executed.
+      <b class="soft">Question sets</b> is where you import, review and lock benchmark sets.
+      <b class="soft">Runs</b> executes a locked set against models, and
+      <b class="soft">Leaderboard</b> shows every finished run.
     </div>
   </div>
   <div class="actions">
-    <a class="btn btn-primary" href="{{ url_for('questions.list') }}">Open Questions →</a>
-    <a class="btn" href="{{ url_for('results.list') }}">Open Results →</a>
+    <a class="btn" href="{{ url_for('results.list') }}">Open leaderboard</a>
+    <a class="btn btn-primary" href="{{ url_for('questions.list') }}">Open question sets</a>
   </div>
 </div>
 
 <div class="grid grid-3">
   <article class="card">
     <div class="card-header"><h2>Workflow</h2></div>
-    <ol class="stack-tight" style="margin: 0; padding-left: 1.2em;">
+    <ul class="stack-tight">
       <li><b>Draft.</b> Upload questions or write them in the UI.</li>
       <li><b>In review.</b> Submit for a second pair of eyes.</li>
-      <li><b>Approved.</b> Reviewer (different person) signs off.</li>
-      <li><b>Locked.</b> Frozen — ready to run against models.</li>
-    </ol>
+      <li><b>Approved.</b> A reviewer (a different person) signs off.</li>
+      <li><b>Locked.</b> Frozen and ready to run against models.</li>
+    </ul>
   </article>
 
   <article class="card">
     <div class="card-header"><h2>Two-person rule</h2></div>
     <p class="muted">
-      The approver can never be the author. We enforce this at the database
-      and audit-log level so the rule survives even when someone clicks fast.
+      The approver can never be the author. This is enforced in the service
+      layer and recorded in the audit log, so it holds even when someone
+      clicks fast.
     </p>
   </article>
 
@@ -40,8 +42,8 @@
     <div class="card-header"><h2>Reproducibility</h2></div>
     <p class="muted">
       Only locked sets can be evaluated. Every run keeps the raw model output,
-      provider metadata, parsed answers, and per-category scores in Postgres
-      for later diffing.
+      provider metadata, parsed answers and per-category scores in the database
+      for later comparison.
     </p>
   </article>
 </div>
