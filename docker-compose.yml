@@ -54,9 +54,14 @@ services:
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       MISTRAL_AGENT_ID: ${MISTRAL_AGENT_ID:-}
       MISTRAL_AGENT_VERSION: ${MISTRAL_AGENT_VERSION:-0}
+      # Local models (Ollama). Default: Ollama running on the host.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_TIMEOUT_S: ${OLLAMA_TIMEOUT_S:-600}
       SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-inno-admin}
       SEED_DEMO_USERS: ${SEED_DEMO_USERS:-1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     command: >
@@ -94,10 +99,36 @@ services:
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       MISTRAL_AGENT_ID: ${MISTRAL_AGENT_ID:-}
       MISTRAL_AGENT_VERSION: ${MISTRAL_AGENT_VERSION:-0}
+      # Local models (Ollama). Default: Ollama running on the host.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_TIMEOUT_S: ${OLLAMA_TIMEOUT_S:-600}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: rq worker --url redis://redis:6379/0 default
     volumes:
       - ./src:/app/src
       - ./imports:/app/imports
 
+  # Optional local-model server, off by default. Start it with:
+  #   docker compose --profile local up --build
+  # and set OLLAMA_BASE_URL=http://ollama:11434 in .env.
+  # Runs on the CPU: Docker on macOS cannot use the Apple GPU. On Apple Silicon
+  # prefer Ollama on the host (see README, "Local models").
+  ollama:
+    profiles: ["local"]
+    image: ollama/ollama:latest
+    container_name: inno_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres_data:
+  ollama_models:
