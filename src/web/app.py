@@ -23,6 +23,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from src.auth.dependencies import get_current_user
 from src.auth.router import router as auth_router
 from src.storage.models import User
+from src.web.routes.admin import router as admin_router
 from src.web.routes.questions import router as questions_router
 from src.web.routes.results import router as results_router
 from src.web.routes.runs import router as runs_router
@@ -53,6 +54,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 app.include_router(auth_router)
+app.include_router(admin_router)
 app.include_router(questions_router)
 app.include_router(results_router)
 app.include_router(runs_router)

@@ -241,10 +241,13 @@ def default_catalog_ids() -> List[str]:
     return [e.id for e in MODEL_CATALOG if e.is_default]
 
 
-def local_discovery() -> "_ollama.Discovery":
-    """Ask Ollama which models are installed (cached, never raises)."""
+def local_discovery(*, fresh: bool = False) -> "_ollama.Discovery":
+    """Ask Ollama which models are installed (never raises).
 
-    return _ollama.discover_models()
+    Cached for a few seconds unless ``fresh`` is set (the admin page).
+    """
+
+    return _ollama.discover_models(use_cache=not fresh)
 
 
 def local_catalog_entries(discovery: "_ollama.Discovery") -> List[CatalogEntry]:
@@ -266,6 +269,34 @@ def local_catalog_entries(discovery: "_ollama.Discovery") -> List[CatalogEntry]:
         )
         for model in discovery.models
     ]
+
+
+def provider_overview() -> List[dict]:
+    """One row per cloud provider group: which key it needs and whether it is set.
+
+    Reports environment variable *names* and a boolean only, never values.
+    """
+
+    rows = []
+    for group, entries in catalog_grouped():
+        env_names: list[str] = []
+        for entry in entries:
+            name = (
+                "OPENROUTER_API_KEY or OPENROUTER_API"
+                if entry.requires_env == "OPENROUTER_API_KEY"
+                else entry.requires_env
+            )
+            if name and name not in env_names:
+                env_names.append(name)
+        rows.append(
+            {
+                "group": group,
+                "env": ", ".join(env_names),
+                "configured": group_is_available(group),
+                "models": len(entries),
+            }
+        )
+    return rows
 
 
 OPENROUTER_PRESET: List[str] = [
