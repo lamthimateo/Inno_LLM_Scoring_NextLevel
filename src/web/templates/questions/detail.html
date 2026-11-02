@@ -8,7 +8,7 @@
 <div class="page-header">
   <div class="title">
     <div class="row-tight mb-2">
-      <a href="{{ url_for('questions.list') }}" class="muted text-sm">← All sets</a>
+      <a href="{{ url_for('questions.list') }}" class="muted text-sm">Back to question sets</a>
     </div>
     <h1>{{ set.title }}</h1>
     <div class="row-tight mt-2">
@@ -62,7 +62,7 @@
                 type="submit">Lock</button>
       </form>
     {% elif set.status == 'locked' %}
-      <a class="btn btn-primary" href="{{ url_for('runs.new', set_id=set.set_id) }}">Start a run →</a>
+      <a class="btn btn-primary" href="{{ url_for('runs.new', set_id=set.set_id) }}">Start a run</a>
     {% endif %}
 
     {% if can_edit %}
@@ -132,7 +132,7 @@
                       <a class="btn btn-sm" href="{{ url_for('questions.edit_one', set_id=set.set_id, qid=q.qid) }}">Edit</a>
                     {% endif %}
                     {% if q.versions and q.versions|length > 1 %}
-                      <a class="btn btn-sm btn-ghost" href="{{ url_for('questions.diff', set_id=set.set_id, qid=q.qid) }}">{{ q.versions|length }} versions →</a>
+                      <a class="btn btn-sm btn-ghost" href="{{ url_for('questions.diff', set_id=set.set_id, qid=q.qid) }}">{{ q.versions|length }} versions</a>
                     {% endif %}
                   </div>
                 </div>

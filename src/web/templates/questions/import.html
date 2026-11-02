@@ -84,7 +84,7 @@
       </label>
     </div>
 
-    <div class="row" style="justify-content: flex-end;">
+    <div class="row justify-end">
       <a class="btn btn-ghost" href="{{ url_for('questions.list') }}">Cancel</a>
       <button class="btn btn-primary" type="submit">
         Save as draft
@@ -131,12 +131,8 @@
           <div class="muted text-sm mt-3">…and {{ preview.questions|length - 10 }} more.</div>
         {% endif %}
       {% else %}
-        <div class="empty" style="padding: var(--space-7) var(--space-3);">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M7 3h7l5 5v13H7V3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-            <path d="M13 3v6h6" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-          </svg>
-          <div class="muted">Upload files to see a live preview.</div>
+        <div class="empty empty-compact">
+          <p class="muted">Upload files to see a live preview.</p>
         </div>
       {% endif %}
     </div>
