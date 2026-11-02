@@ -13,6 +13,9 @@ against four LLMs in a single click.
 - Strict MCQ output format (`QID: LETTER`) so scoring is deterministic.
 - Four-model evaluation by default via **OpenRouter** (OpenAI, Anthropic,
   Google, Meta — one API key, four providers).
+- **Local models via Ollama** (optional): installed models appear in the run
+  dialog next to the cloud models and are scored with the same prompt and
+  settings. See [Local models (Ollama)](#local-models-ollama).
 - Reproducibility: only locked sets can be evaluated. Every run keeps
   the raw model output, parsed answers, per-category scores, and
   provider metadata in Postgres.
@@ -41,6 +44,7 @@ That brings up four containers:
 | `redis`     | 6379  | Reserved for background-job persistence (RQ).                 |
 | `app`       | 8000  | FastAPI app + uvicorn (auto-reload in dev).                   |
 | `worker`    | —     | RQ worker (optional; runs the evaluation jobs).               |
+| `ollama`    | 11434 | Optional local models, only with `--profile local` (see below). |
 
 Open <http://localhost:8000>. You'll see the login screen.
 
@@ -79,13 +83,94 @@ Set `SEED_DEMO_USERS=0` to skip the two demo accounts entirely.
 
 ---
 
+## Local models (Ollama)
+
+Optional. Models installed in [Ollama](https://ollama.com) show up in the run
+dialog under **Local (Ollama)**, next to the cloud models, and run through the
+same adapter code path as Groq and OpenRouter (Ollama speaks the OpenAI
+chat-completions protocol at `/v1/chat/completions`). If you do not use Ollama,
+nothing changes.
+
+### Option A: Ollama on the host (recommended on Apple Silicon)
+
+Docker on macOS cannot use the Apple GPU. Run Ollama natively (it uses Metal)
+and let the containers reach it:
+
+```bash
+ollama serve                 # skip if the Ollama desktop app is already running
+ollama pull llama3.1:8b      # example; pick a model that fits your RAM
+docker compose up --build    # the app reaches the host at host.docker.internal:11434
+```
+
+Nothing to set in `.env`: Compose defaults `OLLAMA_BASE_URL` to
+`http://host.docker.internal:11434`. Without Docker (uvicorn on the host) the
+default is `http://localhost:11434`.
+
+### Option B: Ollama in Docker
+
+```bash
+# in .env:  OLLAMA_BASE_URL=http://ollama:11434
+docker compose --profile local up --build
+docker compose exec ollama ollama pull llama3.1:8b
+```
+
+Models are kept in the `ollama_models` volume. In Docker on macOS this runs on
+the CPU only.
+
+### What you get
+
+- **Run dialog:** installed models are listed in their own section and are
+  never pre-selected. If Ollama is not reachable the section is left out and
+  the dialog says why; the page and all cloud models keep working.
+- **Admin page** (`/admin`, admin role): the configured Ollama address, whether
+  it is reachable, the installed models (size, quantization) and which cloud
+  provider keys are set (names only, never values).
+- **Fairness:** the same prompt, token limit (2048) and temperature (0) as the
+  cloud models. The exact model id (`ollama:llama3.1:8b`) and run date are stored
+  like for any provider, and the run metadata also records the installed
+  model's digest, parameter size and quantization.
+
+### Things to know
+
+- **Context window.** Ollama only evaluates a prompt up to its context window,
+  and the OpenAI-compatible endpoint cannot raise it per request. A long
+  benchmark prompt can therefore be cut off without any error, which would
+  invalidate the score. Raise the server's context length (see the Ollama docs
+  for your version, for example the `OLLAMA_CONTEXT_LENGTH` environment variable
+  or `num_ctx` in a Modelfile). As a safeguard the run metadata sets
+  `ollama.context_truncated_suspected` when the evaluated prompt is far shorter
+  than the prompt that was sent; this is a heuristic, not proof.
+- **The first request is slow** because the model is loaded into memory.
+  `OLLAMA_TIMEOUT_S` (default 600) controls how long to wait for one answer.
+- Runs are sequential, as for every provider.
+
+### Hardware check: `scripts/bench_local.py`
+
+Sends the first N questions of a locked set to every installed Ollama model and
+prints a markdown table with model, total time, average time per question and
+score (plus correct/wrong/blank and notes). A warm-up request runs first so the
+timing excludes loading the model (`--no-warmup` to include it).
+
+```bash
+DATABASE_URL=postgresql+psycopg://benchmark:benchmark@localhost:5432/benchmark \
+  python scripts/bench_local.py --set-id benchmark_v1 -n 10 --machine "Mac M3, 16 GB"
+```
+
+Every number comes from a real call; the script never fills in values.
+
+#### Results on the reference machine (Mac M3, 16 GB)
+
+_Not measured yet. Run the script on that machine and paste the table here._
+
+---
+
 ## What's inside
 
 ```
 .
 ├── alembic/                 Database migrations (autogenerate-capable)
 ├── alembic.ini
-├── docker-compose.yml       postgres + redis + app + worker
+├── docker-compose.yml       postgres + redis + app + worker (+ ollama with --profile local)
 ├── Dockerfile
 ├── .env.example             every env var the app reads
 ├── imports/                 sample input data (answer-key text files)
@@ -98,13 +183,15 @@ Set `SEED_DEMO_USERS=0` to skip the two demo accounts entirely.
 ├── src/
 │   ├── adapters/            model adapters
 │   │   ├── base.py          ModelAdapter / ModelResult
+│   │   ├── _openai_compat.py        shared base for OpenAI-compatible chat APIs
 │   │   ├── openai_adapter.py        OpenAI Responses API + retries
 │   │   ├── openrouter_adapter.py    OpenRouter Chat Completions
 │   │   ├── anthropic_adapter.py     Claude Messages API
 │   │   ├── google_adapter.py        Gemini (`google-genai`)
 │   │   ├── groq_adapter.py          Groq (OpenAI-compatible)
+│   │   ├── ollama_adapter.py        local models via Ollama + /api/tags discovery
 │   │   ├── mistral_adapter.py       Mistral chat completions
-│   │   └── registry.py      'provider:model' → adapter
+│   │   └── registry.py      'provider:model' → adapter, picker catalog
 │   ├── auth/                authentication
 │   │   ├── passwords.py     bcrypt via passlib
 │   │   ├── service.py       register / login / change / reset
@@ -117,6 +204,7 @@ Set `SEED_DEMO_USERS=0` to skip the two demo accounts entirely.
 │   │   ├── prompting.py     build the strict MCQ prompt
 │   │   ├── pipeline.py      store_model_run + store_answers_and_aggregates
 │   │   ├── runs.py          create_run + execute_run + run_in_background
+│   │   ├── local_bench.py   time + score local models (behind scripts/bench_local.py)
 │   │   └── exporting.py     export to CSV + static leaderboard assets
 │   ├── evaluator/           parsing + scoring
 │   ├── storage/
@@ -129,8 +217,12 @@ Set `SEED_DEMO_USERS=0` to skip the two demo accounts entirely.
 │       ├── leaderboard.py   static HTML/JSON leaderboard writer
 │       ├── routes/
 │       │   ├── questions.py /questions/* (list, import, detail, edit, workflow)
-│       │   └── runs.py      /runs/* (list, new, detail, status fragment)
+│       │   ├── runs.py      /runs/* (list, new, detail, status fragment)
+│       │   └── admin.py     /admin (Ollama address + models, provider key status)
 │       └── templates/       Jinja2 (extends _base.html)
+├── scripts/
+│   ├── bench_local.py       time + score installed Ollama models on N questions
+│   └── benchmark_review.py  offline question-content QA report
 └── tests/                   pytest — sqlite in-memory
 ```
 
@@ -186,19 +278,26 @@ DATABASE_URL="sqlite:///:memory:" SESSION_SECRET=test pytest -q
 What's covered:
 
 - **Parser + scoring** (4) — pure unit tests around the strict-format parser.
-- **OpenAI error paths** (3) — adapter retries, missing-key error, reasoning-model temperature handling.
+- **OpenAI error paths** (3) — missing-key error, reasoning-model temperature handling.
+- **OpenAI-compatible adapters** (21) — Groq + OpenRouter request shape, retries, error wording, key handling.
+- **Ollama adapter** (28) — mocked HTTP: success, empty answer, timeout, server not running, missing model, address/timeout config, run metadata, request parity with cloud adapters.
+- **Ollama discovery** (22) — parsing `/api/tags`, unreachable / slow / bad answers, caching, catalog entries.
+- **Run dialog + validation** (10) — local section shown when installed, hidden with a message when not, validation of `ollama:` ids.
+- **Admin page** (9) — access rules, address, models, unreachable server, key names only.
+- **Local benchmark** (22) — prompt limit, timing/scoring with a fake clock, error isolation, markdown output, CLI.
 - **DB schema** (2) — every table from `create_all`, `meta_json` present.
-- **Pipeline / workflow** (5) — import → submit → approve → lock → run → aggregate.
+- **Pipeline / workflow** (6) — import → submit → approve → lock → run → aggregate.
 - **Auth service** (20) — register / login / change / reset / hash helpers.
 - **Auth routes** (7) — full HTTP flow via FastAPI TestClient.
-- **Questions routes** (20) — list, import preview + submit path, two-person review, edit, 403 + 404.
+- **Questions routes** (23) — list, import preview + submit path, two-person review, edit, 403 + 404.
 - **Runs orchestration** (6) — happy path, partial failure, total failure, cancellation.
-- **Runs routes** (10) — list, new-run modal, status fragment, leaderboard, cancel.
+- **Runs routes** (12) — list, new-run modal, status fragment, leaderboard, cancel.
 - **Template smoke** (5) — every rendered template returns 200.
 - **End-to-end** (1) — login → import → review → lock → run → leaderboard,
   all via HTTP, with a mocked adapter.
 
-84 tests, ~35 s on a laptop.
+201 tests, about 45 s on a laptop. No test calls a real API or a real Ollama
+server: HTTP is mocked and an autouse fixture stubs model discovery.
 
 ---
 
@@ -218,6 +317,8 @@ What's covered:
 | `MISTRAL_AGENT_VERSION`   | `0`                                            | Passed to Agents API ``agent_version``.           |
 | `OPENROUTER_HTTP_REFERER` | `https://github.com/inno-llm-scoring`          | Sent to OpenRouter for traffic routing.            |
 | `OPENROUTER_APP_TITLE`    | `LLM Arena`                                    |                                                    |
+| `OLLAMA_BASE_URL`         | `http://localhost:11434` (Compose: `http://host.docker.internal:11434`) | Where Ollama runs. In Docker: `http://host.docker.internal:11434` (host) or `http://ollama:11434` (`--profile local`). |
+| `OLLAMA_TIMEOUT_S`        | `600`                                          | Seconds to wait for one Ollama answer (the first loads the model). |
 | `SEED_ADMIN_USERNAME`     | `admin`                                        |                                                    |
 | `SEED_ADMIN_PASSWORD`     | dev-only default (see code)                    | Must be ≥ 8 chars. **Set explicitly outside dev.** |
 | `SEED_MATEO_PASSWORD`     | dev-only default (see code)                    | Password for the `mateo` (author) demo account.    |
@@ -237,6 +338,7 @@ What's covered:
 | `groq:*`              | implemented    | Chat Completions. `GROQ_API_KEY`.                      |
 | `mistral:*`           | implemented    | Chat completions. `MISTRAL_API_KEY`.              |
 | `mistral-agent:*`     | implemented    | Agents beta (`beta.conversations.start`). Same API key; set `MISTRAL_AGENT_ID` for picker entry. |
+| `ollama:*`            | implemented    | Local models via Ollama's `/v1/chat/completions`. No key; `OLLAMA_BASE_URL`. Ids keep the tag: `ollama:llama3.1:8b`. Installed models are discovered at request time. |
 
 If **all four** native keys (`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`,
 `GROQ_API_KEY`, `MISTRAL_API_KEY`) are set, the run form defaults to one
@@ -244,6 +346,10 @@ model per provider. Otherwise, OpenRouter (if configured) or OpenAI-direct
 presets apply.
 
 OpenRouter remains convenient when you want **one** key across vendors.
+
+Groq, OpenRouter and Ollama share one implementation
+(`src/adapters/_openai_compat.py`); each provider only declares its prefix,
+base URL, key lookup and extras.
 
 ---
 
