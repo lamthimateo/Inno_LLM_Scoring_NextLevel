@@ -1,0 +1,183 @@
+/* =============================================================================
+   tokens.css — LLM Arena design tokens ("Arena dark")
+
+   Both themes live here and nowhere else. base.css and components.css never
+   contain raw colours, sizes or durations; they reference these tokens.
+   Documented in docs/design/DESIGN_SYSTEM.md.
+
+   - Theme is selected by [data-theme="dark" | "light"] on <html>. Dark is the
+     default. The light theme is designed separately, not inverted.
+   - One accent colour. It marks the primary action and "live" state only.
+   - --c-text-faint is for disabled and decorative use only. It does not meet
+     4.5:1 and must never carry information.
+   ========================================================================== */
+
+:root {
+  /* ---- typography: 1 sans + 1 mono, 6 sizes ---------------------------- */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --t-xs: 11px;    /* badges, table headers, section labels (uppercase) */
+  --t-sm: 12px;    /* secondary text, meta, code */
+  --t-md: 13px;    /* tables, controls, dense UI body */
+  --t-base: 14px;  /* default body */
+  --t-lg: 16px;    /* section titles */
+  --t-xl: 22px;    /* page titles */
+
+  --lh-tight: 1.25;
+  --lh-base: 1.5;
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semibold: 600;
+  --tracking-tight: -0.01em;
+  --tracking-caps: 0.06em;
+
+  /* ---- spacing: 4px grid ------------------------------------------------ */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+
+  /* ---- shape ------------------------------------------------------------ */
+  --r-1: 2px;
+  --r-2: 4px;
+  --r-3: 6px;      /* maximum radius anywhere */
+  --bw: 1px;       /* hairline */
+  --bw-bar: 2px;   /* active-state bar */
+
+  /* ---- sizing ----------------------------------------------------------- */
+  --h-control: 32px;
+  --h-control-sm: 24px;
+  --h-row: 36px;
+  --h-topbar: 48px;
+  --h-textarea: 96px;
+  --h-picker: 220px;
+  --h-pre: 448px;
+  --h-listbox: 340px;
+  --w-sidebar: 224px;
+  --w-content: 1440px;
+  --w-aside: 320px;
+  --w-modal: 520px;
+  --w-modal-lg: 720px;
+  --w-auth: 360px;
+  --w-form: 720px;
+  --w-progress: 160px;
+  --w-field-sm: 150px;
+  --w-field-md: 220px;
+  --w-field-search: 260px;
+  --w-compare-min: 920px;
+  --icon: 16px;
+  --icon-stroke: 1.5;
+  --dot: 8px;
+  --bar-h: 4px;
+  --focus-w: 2px;
+  --focus-offset: 2px;
+
+  /* ---- layers ----------------------------------------------------------- */
+  --z-sticky: 10;
+  --z-modal: 200;
+  --z-toast: 300;
+
+  /* ---- motion ----------------------------------------------------------- */
+  --dur-1: 100ms;
+  --dur-2: 160ms;
+  --dur-live: 1600ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ---------------------------------------------------------------- dark --- */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --c-bg: #0D0F12;
+  --c-surface-1: #13161A;
+  --c-surface-2: #191D22;
+  --c-surface-3: #20252B;
+
+  --c-border: #262B32;
+  --c-border-strong: #353B44;
+
+  --c-text: #E6E8EB;
+  --c-text-muted: #9AA3AE;
+  --c-text-faint: #6E7782;
+
+  --c-accent: #4DA3FF;
+  --c-accent-hover: #6BB3FF;
+  --c-accent-active: #3A92EE;
+  --c-accent-text: #4DA3FF;
+  --c-accent-soft: #12263B;
+  --c-on-accent: #07111C;
+
+  --c-success: #3FB97F;
+  --c-success-bg: #11261C;
+  --c-success-border: #1F5A3E;
+  --c-warning: #D9A441;
+  --c-warning-bg: #2A2112;
+  --c-warning-border: #5E4A1E;
+  --c-danger: #F0616D;
+  --c-danger-bg: #2D1519;
+  --c-danger-border: #6A2A31;
+
+  /* QID-prefix category tints (chemistry, emotions, math, 3D, no-knowledge, contradiction) */
+  --c-cat-c: #6AA8FF;
+  --c-cat-e: #F28DB2;
+  --c-cat-m: #B39CFF;
+  --c-cat-a: #5FD3A5;
+  --c-cat-n: #F5B544;
+  --c-cat-x: #FF7A6B;
+  --c-on-cat: #0D0F12;
+
+  --c-scrim: rgba(5, 6, 8, 0.72);
+  --glow-live: 0 0 8px var(--c-accent);
+}
+
+/* --------------------------------------------------------------- light --- */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --c-bg: #F3F4F6;
+  --c-surface-1: #FFFFFF;
+  --c-surface-2: #F7F8FA;
+  --c-surface-3: #ECEEF1;
+
+  --c-border: #DDE0E5;
+  --c-border-strong: #C5CAD2;
+
+  --c-text: #14171C;
+  --c-text-muted: #4F5864;
+  --c-text-faint: #8A93A0;
+
+  --c-accent: #0B63CE;
+  --c-accent-hover: #0A56B3;
+  --c-accent-active: #084A9A;
+  --c-accent-text: #0B5CBF;
+  --c-accent-soft: #E3EEFB;
+  --c-on-accent: #FFFFFF;
+
+  --c-success: #077A4C;
+  --c-success-bg: #E3F4EB;
+  --c-success-border: #B7DEC8;
+  --c-warning: #955800;
+  --c-warning-bg: #FBF1DC;
+  --c-warning-border: #E6CE97;
+  --c-danger: #C42B3B;
+  --c-danger-bg: #FBE6E9;
+  --c-danger-border: #F0B9C0;
+
+  --c-cat-c: #2F6FD6;
+  --c-cat-e: #C8437A;
+  --c-cat-m: #7B5CE0;
+  --c-cat-a: #127A52;
+  --c-cat-n: #955800;
+  --c-cat-x: #C23A25;
+  --c-on-cat: #FFFFFF;
+
+  --c-scrim: rgba(15, 17, 21, 0.45);
+  --glow-live: 0 0 6px var(--c-accent);
+}
