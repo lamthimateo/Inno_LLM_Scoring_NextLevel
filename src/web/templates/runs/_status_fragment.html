@@ -41,9 +41,9 @@
   </section>
 
   {% if job.progress_total %}
-    <div class="progress">
+    <div class="progress {{ 'is-live' if job.status == 'running' else ('is-done' if job.status == 'done' else '') }}">
       <div class="bar-fill"
-           style="width: {{ (job.progress_done * 100 // job.progress_total) if job.progress_total else 0 }}%;"></div>
+           style="--w: {{ (job.progress_done * 100 // job.progress_total) if job.progress_total else 0 }}%;"></div>
     </div>
   {% endif %}
 

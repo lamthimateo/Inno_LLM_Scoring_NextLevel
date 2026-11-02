@@ -5,7 +5,7 @@
 <div class="page-header">
   <div class="title">
     <div class="row-tight mb-2">
-      <a href="{{ url_for('runs.list') }}" class="muted text-sm">← All runs</a>
+      <a href="{{ url_for('runs.list') }}" class="muted text-sm">Back to runs</a>
     </div>
     <h1>Run <code class="kbd text-lg">{{ run.run_id }}</code></h1>
     <div class="row-tight mt-2 muted text-sm">
@@ -20,7 +20,7 @@
   </div>
   <div class="actions">
     {% if run.status == 'done' %}
-      <a class="btn btn-primary" href="{{ url_for('results.leaderboard', run_id=run.run_id) }}">Open leaderboard →</a>
+      <a class="btn btn-primary" href="{{ url_for('results.leaderboard', run_id=run.run_id) }}">Open leaderboard</a>
     {% elif run.status in ['queued','running'] %}
       <form method="post" action="{{ url_for('runs.cancel', run_id=run.run_id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
@@ -59,7 +59,7 @@
 
     <div class="card">
       <div class="card-header"><h3>Scoring rule</h3></div>
-      <ul class="stack-tight text-sm" style="list-style: none; padding: 0; margin: 0;">
+      <ul class="stack-tight text-sm">
         <li class="spread"><span>Correct</span> <span class="badge badge-done">+1</span></li>
         <li class="spread"><span>Blank</span>   <span class="badge">0</span></li>
         <li class="spread"><span>Wrong</span>   <span class="badge badge-error">−10</span></li>

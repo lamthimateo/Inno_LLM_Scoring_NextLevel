@@ -16,7 +16,7 @@
       <h3>Model progress</h3>
       <span class="muted text-sm">
         {% if job.status == 'running' %}
-          <span class="dot good" style="display:inline-block; animation: pulse 1.4s ease-in-out infinite; vertical-align: middle;"></span>
+          <span class="is-live"><span class="dot"></span></span>
           live · updates every 2 s
         {% else %}
           {{ job.status }}
@@ -26,20 +26,20 @@
 
     <div class="model-progress">
       {% for m in model_runs %}
-        <div class="model-row {{ 'has-error' if m.error_message else '' }}">
+        <div class="model-row {{ 'has-error' if m.error_message else '' }} {{ 'is-live' if m.status == 'running' else '' }}">
           <div class="m-name">
             <span>{{ m.label or m.model_id }}</span>
             <code class="kbd">{{ m.model_id }}</code>
           </div>
           <div class="progress {{ 'indeterminate' if m.status == 'running' and (m.percent is none or m.percent == 0) else '' }}">
-            <div class="bar-fill" style="width: {{ (m.percent or (0 if m.status != 'done' else 100)) }}%;"></div>
+            <div class="bar-fill" style="--w: {{ (m.percent or (0 if m.status != 'done' else 100)) }}%;"></div>
           </div>
           <div class="m-pct">
             {% if m.status == 'done' %}100%
             {% elif m.percent is not none and m.percent > 0 %}{{ m.percent }}%
             {% else %}—{% endif %}
           </div>
-          <div style="text-align:right;">
+          <div class="status-cell">
             {% if m.status == 'cancelled' %}
               {% with status='queued', status_label='Cancelled' %}{% include "components/_status_badge.html" %}{% endwith %}
             {% else %}
@@ -78,9 +78,9 @@
   </section>
 
   {% if job.progress_total %}
-    <div class="progress">
+    <div class="progress {{ 'is-live' if job.status == 'running' else ('is-done' if job.status == 'done' else '') }}">
       <div class="bar-fill"
-           style="width: {{ (job.progress_done * 100 // job.progress_total) if job.progress_total else 0 }}%;"></div>
+           style="--w: {{ (job.progress_done * 100 // job.progress_total) if job.progress_total else 0 }}%;"></div>
     </div>
   {% endif %}
 
