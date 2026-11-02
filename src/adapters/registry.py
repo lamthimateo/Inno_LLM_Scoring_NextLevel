@@ -9,6 +9,7 @@ Model IDs use a ``provider:model`` form, e.g.::
     groq:llama-3.3-70b-versatile
     mistral:mistral-large-latest
     mistral-agent:<agent_id> (catalog entry appears when ``MISTRAL_AGENT_ID`` is set)
+    ollama:llama3.1:8b       (local; the model part may contain a colon, listed from Ollama at request time)
 
 The web UI offers a curated list (:data:`MODEL_CATALOG`). Default selection:
 
@@ -30,6 +31,7 @@ import os
 from dataclasses import dataclass
 from typing import Dict, List
 
+from src.adapters import ollama_adapter as _ollama
 from src.adapters.base import ModelAdapter
 from src.adapters.anthropic_adapter import AnthropicAdapter
 from src.adapters.google_adapter import GoogleAdapter, google_api_credentials
@@ -50,6 +52,7 @@ GROUP_ANTHROPIC = "Anthropic direct"
 GROUP_GOOGLE = "Google Gemini"
 GROUP_GROQ = "Groq"
 GROUP_MISTRAL = "Mistral AI"
+GROUP_LOCAL = "Local (Ollama)"
 
 NATIVE_ENV_KEYS = (
     "ANTHROPIC_API_KEY",
@@ -211,6 +214,8 @@ def catalog_by_id() -> Dict[str, CatalogEntry]:
 def catalog_entry_env_ok(entry: CatalogEntry) -> bool:
     """Whether ``entry`` can run given current environment variables."""
 
+    if not entry.requires_env:  # local models need no key
+        return True
     if entry.requires_env == "OPENROUTER_API_KEY":
         return bool(openrouter_explicit_credentials())
     if entry.requires_env == "GOOGLE_API_KEY":
@@ -234,6 +239,33 @@ def group_is_available(group: str) -> bool:
 
 def default_catalog_ids() -> List[str]:
     return [e.id for e in MODEL_CATALOG if e.is_default]
+
+
+def local_discovery() -> "_ollama.Discovery":
+    """Ask Ollama which models are installed (cached, never raises)."""
+
+    return _ollama.discover_models()
+
+
+def local_catalog_entries(discovery: "_ollama.Discovery") -> List[CatalogEntry]:
+    """Picker entries for the locally installed Ollama models.
+
+    Unlike :data:`MODEL_CATALOG` these are resolved at request time, because
+    the installed set changes while the app runs. Local models are never
+    pre-selected.
+    """
+
+    return [
+        CatalogEntry(
+            id=model.model_id,
+            label=model.name,
+            provider="ollama",
+            group=GROUP_LOCAL,
+            requires_env="",
+            is_default=False,
+        )
+        for model in discovery.models
+    ]
 
 
 OPENROUTER_PRESET: List[str] = [
@@ -271,7 +303,9 @@ def get_adapter(model_id: str) -> ModelAdapter:
         return MistralAdapter(model)
     if provider == "mistral-agent":
         return MistralAgentAdapter(model)
+    if provider == "ollama":
+        return _ollama.OllamaAdapter(model)
     raise ValueError(
         f"Unknown provider {provider!r}. Supported: openai, openrouter, "
-        f"anthropic, google, groq, mistral, mistral-agent."
+        f"anthropic, google, groq, mistral, mistral-agent, ollama."
     )

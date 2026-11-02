@@ -39,6 +39,7 @@ from typing import Any, Iterable, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.adapters.base import UserFacingModelError
 from src.adapters.registry import get_adapter
 from src.benchmark.importing import load_answer_key
 from src.benchmark.pipeline import store_answers_and_aggregates, store_model_run
@@ -113,6 +114,9 @@ def _friendly_model_error(exc: Exception) -> str:
     msg = str(exc).strip() or exc.__class__.__name__
     msg = " ".join(msg.split())
     msg = _API_KEY_RE.sub("[redacted]", msg)
+    if isinstance(exc, UserFacingModelError):
+        # Already worded for end users: keep it verbatim (length-capped).
+        return msg[:500] + ("..." if len(msg) > 500 else "")
     low = msg.lower()
 
     if "api_key_invalid" in low or "invalid x-api-key" in low:
