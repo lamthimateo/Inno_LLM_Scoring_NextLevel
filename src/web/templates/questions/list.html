@@ -75,19 +75,17 @@
           <td>
             {% with status=s.status %}{% include "components/_status_badge.html" %}{% endwith %}
           </td>
-          <td>{{ s.author or '—' }}</td>
-          <td>{{ s.reviewer or '—' }}</td>
+          <td>{{ s.author_username or '—' }}</td>
+          <td>{{ s.reviewer_username or '—' }}</td>
           <td class="num">{{ s.question_count }}</td>
           <td data-value="{{ s.updated_at }}">
             <time datetime="{{ s.updated_at }}">{{ s.updated_at_human or s.updated_at }}</time>
           </td>
           <td class="actions">
             <a class="btn btn-sm" href="{{ url_for('questions.detail', set_id=s.set_id) }}">Open</a>
-            {% if s.status == 'draft' and (current_user.username == s.author or current_user.role == 'admin') %}
-              <form method="post" action="{{ url_for('questions.submit_review', set_id=s.set_id) }}" class="inline-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
-                <button class="btn btn-sm" type="submit">Submit</button>
-              </form>
+            {% if s.status == 'draft' and (current_user.username == s.author_username or current_user.role == 'admin') %}
+              {# Submitting needs a reviewer, chosen on the set page. #}
+              <a class="btn btn-sm" href="{{ url_for('questions.detail', set_id=s.set_id) }}">Submit for review</a>
             {% endif %}
           </td>
         </tr>

@@ -15,9 +15,9 @@
       <code class="kbd">{{ set.set_id }}</code>
       {% with status=set.status %}{% include "components/_status_badge.html" %}{% endwith %}
       <span class="muted text-sm">·</span>
-      <span class="muted text-sm">Author <b class="soft">{{ set.author or '—' }}</b></span>
+      <span class="muted text-sm">Author <b class="soft">{{ set.author.username if set.author else '—' }}</b></span>
       <span class="muted text-sm">·</span>
-      <span class="muted text-sm">Reviewer <b class="soft">{{ set.reviewer or '—' }}</b></span>
+      <span class="muted text-sm">Reviewer <b class="soft">{{ set.reviewer.username if set.reviewer else '—' }}</b></span>
       <span class="muted text-sm">·</span>
       <span class="muted text-sm">Updated <time datetime="{{ set.updated_at }}">{{ set.updated_at_human or set.updated_at }}</time></span>
     </div>
@@ -248,7 +248,7 @@
       <div class="card-header"><h3>Set details</h3></div>
       <div class="stack-tight text-sm">
         <div class="spread"><span class="muted">ID</span> <code class="text-mono">{{ set.set_id }}</code></div>
-        <div class="spread"><span class="muted">Questions</span> <b>{{ set.question_count }}</b></div>
+        <div class="spread"><span class="muted">Questions</span> <b class="num">{{ set.questions | length }}</b></div>
         <div class="spread"><span class="muted">Created</span> <span>{{ set.created_at_human or set.created_at }}</span></div>
         <div class="spread"><span class="muted">Updated</span> <span>{{ set.updated_at_human or set.updated_at }}</span></div>
         {% if set.description %}

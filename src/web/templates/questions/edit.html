@@ -29,7 +29,7 @@
 {% endif %}
 
 <form method="post"
-      action="{{ url_for('questions.edit_one', set_id=set.set_id, qid=question.qid) }}"
+      action="{{ url_for('questions.edit_submit', set_id=set.set_id, qid=question.qid) }}"
       hx-post="{{ url_for('questions.edit_one', set_id=set.set_id, qid=question.qid) }}"
       hx-target="#preview-pane"
       hx-trigger="input changed delay:300ms from:find input, input changed delay:300ms from:find textarea"

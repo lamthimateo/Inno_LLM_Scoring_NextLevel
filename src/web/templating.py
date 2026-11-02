@@ -56,6 +56,7 @@ _ROUTES: dict[str, tuple[str, list[str]]] = {
     "questions.detail": ("/questions/{set_id}", ["set_id"]),
     "questions.edit": ("/questions/{set_id}/edit", ["set_id"]),
     "questions.edit_one": ("/questions/{set_id}/{qid}", ["set_id", "qid"]),
+    "questions.edit_submit": ("/questions/{set_id}/{qid}/edit", ["set_id", "qid"]),
     "questions.diff": ("/questions/{set_id}/{qid}/diff", ["set_id", "qid"]),
     "questions.validate": ("/questions/{set_id}/validate", ["set_id"]),
     "questions.submit_review": ("/questions/{set_id}/submit-review", ["set_id"]),
