@@ -20,11 +20,24 @@ class ModelResult:
     meta: Dict[str, Any]
 
 
+class UserFacingModelError(RuntimeError):
+    """An adapter failure whose message is already worded for end users.
+
+    The run orchestrator shows these verbatim instead of rewriting them into
+    its generic provider-error hints.
+    """
+
+
 class ModelAdapter:
     """Interface for calling an LLM."""
 
     def id(self) -> str:
         raise NotImplementedError
+
+    def is_configured(self) -> bool:
+        """Whether the adapter has what it needs to run (e.g. an API key)."""
+
+        return True
 
     def run(self, prompt: str, **kwargs) -> ModelResult:
         raise NotImplementedError

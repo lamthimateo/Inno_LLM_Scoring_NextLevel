@@ -9,6 +9,8 @@ question set.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,7 +21,14 @@ class PromptingError(ValueError):
     """Raised when the prompt cannot be built (unknown set, wrong status)."""
 
 
-def build_prompt_text(session: Session, set_id: str) -> str:
+def list_prompt_questions(
+    session: Session, set_id: str, *, limit: Optional[int] = None
+) -> list[Question]:
+    """Questions of an approved or locked set, in the order they are prompted.
+
+    ``limit`` keeps only the first N (used by the local-model benchmark).
+    """
+
     qs = session.get(QuestionSet, set_id)
     if qs is None:
         raise PromptingError(f"Unknown set_id: {set_id!r}")
@@ -27,10 +36,17 @@ def build_prompt_text(session: Session, set_id: str) -> str:
         raise PromptingError(
             f"Set must be approved or locked to build a prompt (got {qs.status!r})."
         )
+    if limit is not None and limit < 1:
+        raise PromptingError("limit must be at least 1.")
 
-    questions = session.execute(
-        select(Question).where(Question.set_id == set_id).order_by(Question.qid)
-    ).scalars().all()
+    stmt = select(Question).where(Question.set_id == set_id).order_by(Question.qid)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return list(session.execute(stmt).scalars().all())
+
+
+def build_prompt_text(session: Session, set_id: str, *, limit: Optional[int] = None) -> str:
+    questions = list_prompt_questions(session, set_id, limit=limit)
 
     header = (
         "You will answer a multiple-choice benchmark.\n\n"

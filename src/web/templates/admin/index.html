@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Admin · LLM Arena{% endblock %}
+
+{#
+  Admin overview (admin role only).
+  Context: ollama (Discovery: base_url, reachable, models, error),
+           ollama_timeout_s, providers (list of {group, env, configured, models}).
+#}
+
+{% block content %}
+<div class="page-header">
+  <div class="title">
+    <h1>Admin</h1>
+    <div class="sub">Where model calls go, and what is available to run.</div>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('admin.index') }}">Refresh</a>
+  </div>
+</div>
+
+<section class="card mb-4" aria-labelledby="local-title">
+  <div class="card-header">
+    <h2 id="local-title">Local models (Ollama)</h2>
+    {% if ollama.reachable %}
+      <span class="badge badge-done"><span class="dot"></span>Reachable</span>
+    {% else %}
+      <span class="badge badge-error"><span class="dot"></span>Not reachable</span>
+    {% endif %}
+  </div>
+
+  <dl class="kv" data-ollama-config>
+    <div><dt>Address</dt><dd class="text-mono" data-ollama-address>{{ ollama.base_url }}</dd></div>
+    <div><dt>Set by</dt><dd><code>OLLAMA_BASE_URL</code> in <code>.env</code> (default <code>http://localhost:11434</code>)</dd></div>
+    <div><dt>Request timeout</dt><dd class="text-mono">{{ '%g' | format(ollama_timeout_s) }} s <span class="muted">(<code>OLLAMA_TIMEOUT_S</code>)</span></dd></div>
+  </dl>
+
+  {% if not ollama.reachable %}
+    <div class="alert alert-warn mt-4" role="status">
+      <div class="alert-body">
+        <div class="alert-title">{{ ollama.error }}</div>
+        <div class="muted text-sm">
+          Start Ollama, or point the app at it. Ollama on the host from Docker:
+          <code>http://host.docker.internal:11434</code>. Ollama from the optional
+          <code>local</code> Compose profile: <code>http://ollama:11434</code>.
+          Without Docker: <code>http://localhost:11434</code>.
+        </div>
+      </div>
+    </div>
+  {% elif not ollama.models %}
+    <div class="alert alert-info mt-4" role="status">
+      <div class="alert-body">
+        <div class="alert-title">Ollama is running but has no models installed.</div>
+        <div class="muted text-sm">Install one with <code>ollama pull &lt;model&gt;</code>, then refresh this page.</div>
+      </div>
+    </div>
+  {% else %}
+    <div class="table-wrap mt-4">
+      <div class="table-scroll">
+        <table class="table" id="ollama-models">
+          <thead>
+            <tr>
+              <th>Model id</th>
+              <th>Family</th>
+              <th class="num">Parameters</th>
+              <th>Quantization</th>
+              <th class="num">Size</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in ollama.models %}
+              <tr>
+                <td class="text-mono">{{ m.model_id }}</td>
+                <td>{{ m.family or '—' }}</td>
+                <td class="num">{{ m.parameter_size or '—' }}</td>
+                <td class="text-mono">{{ m.quantization or '—' }}</td>
+                <td class="num">{{ m.size_label or '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="cloud-title">
+  <div class="card-header">
+    <h2 id="cloud-title">Cloud providers</h2>
+    <span class="muted text-sm">Key names only; values are never shown.</span>
+  </div>
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table class="table" id="provider-table">
+        <thead>
+          <tr><th>Provider</th><th>API key</th><th class="num">Models</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for p in providers %}
+            <tr>
+              <td>{{ p.group }}</td>
+              <td class="text-mono">{{ p.env }}</td>
+              <td class="num">{{ p.models }}</td>
+              <td>
+                {% if p.configured %}
+                  <span class="badge badge-done"><span class="dot"></span>Configured</span>
+                {% else %}
+                  <span class="badge badge-queued"><span class="dot"></span>Not set</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

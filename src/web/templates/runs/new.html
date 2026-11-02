@@ -11,9 +11,10 @@
     - model_catalog_grouped: list[(group_label, [CatalogEntry,...]), ...]
     - model_catalog_defaults: list[str] of default-selected model ids
     - model_catalog_group_available: dict[group_label -> bool]
+    - local_models_status: {reachable, base_url, count, error} for the Ollama note
 #}
 
-{% macro _model_picker(field_id_prefix, selected_models, defaults, grouped, group_available) %}
+{% macro _model_picker(field_id_prefix, selected_models, defaults, grouped, group_available, local_status=none) %}
   {#
     Renders the model picker as a native <select multiple> with <optgroup>
     sections. Native is intentional: it's accessible, mobile-friendly, and
@@ -63,6 +64,19 @@
           <br>
           <span class="muted">
             OpenRouter models require <code>OPENROUTER_API_KEY</code> or <code>OPENROUTER_API</code> in <code>.env</code>.
+          </span>
+        {% endif %}
+        {% if local_status and not local_status.reachable %}
+          <br>
+          <span class="muted" data-local-models-note>
+            Local models unavailable: {{ local_status.error }}
+            Start Ollama or set <code>OLLAMA_BASE_URL</code> in <code>.env</code>.
+          </span>
+        {% elif local_status and local_status.count == 0 %}
+          <br>
+          <span class="muted" data-local-models-note>
+            Ollama is running at {{ local_status.base_url }} but has no models installed.
+            Install one with <code>ollama pull &lt;model&gt;</code>.
           </span>
         {% endif %}
       </div>
@@ -136,7 +150,8 @@
               (form.selected_models if form and form.selected_models is defined else model_catalog_defaults),
               model_catalog_defaults,
               model_catalog_grouped,
-              model_catalog_group_available
+              model_catalog_group_available,
+              local_models_status
           ) }}
 
           <div class="form-field">
@@ -194,7 +209,8 @@
               model_catalog_defaults,
               model_catalog_defaults,
               model_catalog_grouped,
-              model_catalog_group_available
+              model_catalog_group_available,
+              local_models_status
           ) }}
 
           <div class="form-field">

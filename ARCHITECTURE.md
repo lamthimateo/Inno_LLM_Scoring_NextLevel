@@ -33,14 +33,15 @@ workflow, a multi-provider adapter layer, and a static leaderboard export.
 
 ## Runtime topology
 
-`docker compose up` brings up four services:
+`docker compose up` brings up four services (a fifth, `ollama`, is opt-in via `--profile local`):
 
 | Service     | Image                | Purpose                                                    |
 | ----------- | -------------------- | ---------------------------------------------------------- |
 | `postgres`  | `postgres:16-alpine` | Application database.                                      |
 | `redis`     | `redis:7-alpine`     | Job queue backing store (RQ).                              |
 | `app`       | built from Dockerfile | FastAPI + uvicorn, runs migrations + seeds users at boot.  |
-| `worker`    | built from Dockerfile | RQ worker for background run execution.                    |
+| `worker`    | built from Dockerfile | RQ worker (not used by the current run path, see B below). |
+| `ollama`    | `ollama/ollama`      | Optional local models, only with `--profile local`.        |
 
 Static assets (CSS, JS, logo) are served from `/static` (repo-root
 `static/`). Templates live in `src/web/templates/` and are rendered via
@@ -61,7 +62,11 @@ Jinja2 + HTMX for partial updates.
 - `routes/questions.py` — `/questions/*` (list, import preview, detail,
   edit, workflow transitions).
 - `routes/runs.py` — `/runs/*` (list, new-run modal, status fragment,
-  leaderboard, cancel).
+  leaderboard, cancel). The new-run picker merges locally installed
+  Ollama models into the catalog at request time.
+- `routes/admin.py` — `/admin` (admin role): configured Ollama address,
+  reachability, installed models, and which cloud provider keys are set
+  (names only).
 
 ### `src/auth/` — authentication
 - `passwords.py` — bcrypt hashing via passlib.
@@ -79,27 +84,45 @@ Jinja2 + HTMX for partial updates.
 - `workflow.py` — two-person review state transitions + question edit
   versioning.
 - `queries.py` — read-side query helpers used by routes.
-- `prompting.py` — build the strict `QID: LETTER` prompt from DB rows.
+- `prompting.py` — build the strict `QID: LETTER` prompt from DB rows
+  (optionally only the first N questions).
 - `pipeline.py` — `store_model_run()` and
   `store_answers_and_aggregates()` (parse + score + persist).
 - `runs.py` — `create_run()` / `execute_run()` orchestration with
   cancellation support; background-job entrypoint for the RQ worker.
+- `local_bench.py` — time + score locally installed models on N
+  questions (domain logic behind `scripts/bench_local.py`).
 - `exporting.py` — query `aggregates ⋈ model_runs` and (optionally)
   write the static leaderboard.
 
 ### `src/adapters/` — model providers
-- `base.py` — `ModelAdapter` interface and `ModelResult` dataclass
-  (`model_id`, `raw_text`, `meta`).
+- `base.py` — `ModelAdapter` interface, `ModelResult` dataclass
+  (`model_id`, `raw_text`, `meta`) and `UserFacingModelError` (failures
+  whose message is already worded for users and is shown verbatim).
+- `_openai_compat.py` — `OpenAICompatAdapter`: the shared Chat
+  Completions implementation (request shape, reasoning-model guard,
+  retries, response parsing). Subclasses declare provider prefix, base
+  URL, key lookup and optional hooks (extra client kwargs, retry rule,
+  failure wording, extra metadata).
+- `_retry.py` — shared retryable-error test and backoff.
 - `openai_adapter.py` — OpenAI Responses API with retries / backoff.
-- `openrouter_adapter.py` — OpenRouter Chat Completions (single key,
-  many providers).
-- `anthropic_adapter.py`, `google_adapter.py`, `groq_adapter.py`,
-  `mistral_adapter.py` — native SDK adapters (`ANTHROPIC_API_KEY`,
-  `GOOGLE_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`).
+- `openrouter_adapter.py`, `groq_adapter.py` — thin `OpenAICompatAdapter`
+  subclasses (OpenRouter: one key, many providers).
+- `ollama_adapter.py` — `OllamaAdapter` (`ollama:<model>`, a subclass of
+  `OpenAICompatAdapter` against `<OLLAMA_BASE_URL>/v1`; no key; fails fast
+  when the server is down; records model digest/quantization and a
+  suspected-context-truncation flag in `meta`) plus `discover_models()`,
+  which reads `GET /api/tags`, never raises, and caches results for a few
+  seconds.
+- `anthropic_adapter.py`, `google_adapter.py`, `mistral_adapter.py` —
+  native SDK adapters (`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`,
+  `MISTRAL_API_KEY`).
 - `mistral_agent_adapter.py` — Mistral **Agents** beta
   (`mistral-agent:<id>` when ``MISTRAL_AGENT_ID`` is set).
-- `registry.py` — `provider:model` → adapter lookup + the curated
-  catalog used by the new-run model picker.
+- `registry.py` — `provider:model` → adapter lookup (the model part may
+  contain a colon: `ollama:llama3.1:8b`), the curated cloud catalog used
+  by the new-run picker, runtime catalog entries for installed local
+  models, and the provider-key overview for the admin page.
 
 ### `src/evaluator/` — parsing + scoring
 - `parser_mcq.py` — extracts `QID: LETTER` pairs from raw model output
@@ -118,6 +141,9 @@ Jinja2 + HTMX for partial updates.
   be autogenerated with `alembic revision --autogenerate`.
 
 ### `scripts/`
+- `bench_local.py` — hardware/model check: sends the first N questions of
+  a locked set to each installed Ollama model and prints a markdown table
+  (total time, average per question, score). Measured values only.
 - `benchmark_review.py` — offline batch QA report. Runs the same
   checks as `src/benchmark/validation.py` but emits a markdown summary
   for `imports/answer_key/*.txt`. Useful for CI gates.
@@ -171,8 +197,9 @@ Two-person review is enforced by FK + service-layer checks: the
 ### B) Run execution
 1. User picks a locked set on **Runs → + New run** and selects one or
    more models from the curated catalog.
-2. `POST /runs` creates a `runs` row (status `queued`) and enqueues the
-   RQ job that calls `src.benchmark.runs.execute_run`.
+2. `POST /runs/new` creates a `runs` row (status `queued`) and starts
+   `src.benchmark.runs.execute_run` on a background thread in the app
+   process (`run_in_background`).
 3. The orchestrator loops over `(run_id, model_id)` pairs:
    - Looks up the adapter via `src/adapters/registry.py`.
    - Calls `adapter.run(prompt, ...)`, capturing the raw response and
@@ -181,6 +208,22 @@ Two-person review is enforced by FK + service-layer checks: the
      `store_answers_and_aggregates()`.
 4. The detail page polls `/runs/{id}/status` (HTMX) every 2 s and the
    leaderboard fills in as each model returns.
+
+### B2) Local models (Ollama)
+1. When the run dialog (or `/admin`) renders, the route asks
+   `registry.local_discovery()`, which calls `discover_models()`
+   (`GET {OLLAMA_BASE_URL}/api/tags`, 1.5 s timeout, cached 15 s on
+   success and 5 s on failure; the admin page bypasses the cache).
+2. Installed models become `CatalogEntry` rows in the "Local (Ollama)"
+   group; they are never default-selected. If Ollama is unreachable the
+   group is omitted and the picker shows the error text instead.
+3. Submitted `ollama:` ids are validated against the same fresh
+   discovery; a clear message is returned if the server went away.
+4. A run calls `OllamaAdapter.run()` like any adapter: same prompt,
+   `max_tokens` 2048, temperature 0. Connection failures are not
+   retried; timeouts are retried once. `ModelRun.model_id` stores the
+   exact id and `meta_json` the digest, parameter size, quantization and
+   the `context_truncated_suspected` flag.
 
 ### C) Scoring
 1. `parse_model_output` extracts `QID: LETTER` pairs from the raw model
@@ -209,3 +252,6 @@ Two-person review is enforced by FK + service-layer checks: the
 
 The suite is fully self-contained: every test resets the schema, no
 external services are required, and adapter calls are patched out.
+An autouse fixture in `tests/conftest.py` replaces Ollama model discovery
+with an "unreachable" stub, so no test can contact a real Ollama; discovery
+and adapter tests use `httpx.MockTransport` or a faked `openai` client.

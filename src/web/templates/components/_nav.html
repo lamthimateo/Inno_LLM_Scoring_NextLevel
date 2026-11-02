@@ -28,6 +28,13 @@
            role="tab" aria-selected="{{ 'true' if active_tab == 'results' else 'false' }}">
           Results
         </a>
+        {% if current_user.role == 'admin' %}
+        <a href="{{ url_for('admin.index') }}"
+           class="{{ 'active' if active_tab == 'admin' else '' }}"
+           role="tab" aria-selected="{{ 'true' if active_tab == 'admin' else 'false' }}">
+          Admin
+        </a>
+        {% endif %}
       </div>
     {% endif %}
 

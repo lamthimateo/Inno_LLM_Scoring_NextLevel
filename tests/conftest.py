@@ -59,3 +59,27 @@ def users(session):
     session.add_all([author, reviewer])
     session.flush()
     return {"author": author, "reviewer": reviewer}
+
+
+@pytest.fixture(autouse=True)
+def no_real_ollama(monkeypatch):
+    """No test may talk to a real Ollama server.
+
+    Model discovery is replaced by an "unreachable" stub for every test.
+    Tests that need local models install their own fake with
+    ``monkeypatch.setattr(ollama_adapter, "discover_models", ...)``; tests of
+    the real function call it with ``httpx.MockTransport``.
+    """
+
+    from src.adapters import ollama_adapter
+
+    ollama_adapter.clear_discovery_cache()
+    monkeypatch.setattr(
+        ollama_adapter,
+        "discover_models",
+        lambda *a, **kw: ollama_adapter.Discovery(
+            base_url="http://ollama.test:11434",
+            reachable=False,
+            error="Ollama is not reachable at http://ollama.test:11434.",
+        ),
+    )

@@ -68,6 +68,7 @@ _ROUTES: dict[str, tuple[str, list[str]]] = {
     "runs.detail": ("/runs/{run_id}", ["run_id"]),
     "runs.detail_fragment": ("/runs/{run_id}/status", ["run_id"]),
     "runs.cancel": ("/runs/{run_id}/cancel", ["run_id"]),
+    "admin.index": ("/admin", []),
     "results.list": ("/results", []),
     "results.leaderboard": ("/results/{run_id}", ["run_id"]),
     "results.export": ("/results/export.csv", []),
