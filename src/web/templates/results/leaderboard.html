@@ -18,7 +18,7 @@
 <div class="page-header">
   <div class="title">
     <div class="row-tight mb-2">
-      <a href="{{ url_for('results.list') }}" class="muted text-sm">← All results</a>
+      <a href="{{ url_for('results.list') }}" class="muted text-sm">Back to results</a>
     </div>
     <h1>Leaderboard</h1>
     <div class="row-tight mt-2 muted text-sm">
@@ -256,7 +256,7 @@
         const pct = isScore && typeof v === "number"
           ? (100 * (v - range.min) / (range.max - range.min))
           : null;
-        const bar = isScore ? '<div class="bar"><span style="width:' + clamp(pct || 0, 0, 100) + '%"></span></div>' : "";
+        const bar = isScore ? '<div class="bar"><span style="--w:' + clamp(pct || 0, 0, 100) + '%"></span></div>' : "";
         return '<div class="metric"><span class="k">' + escapeHtml(label) + '</span>' + bar + '<span class="v">' + escapeHtml(v == null ? "" : v) + '</span></div>';
       }).join("");
 
