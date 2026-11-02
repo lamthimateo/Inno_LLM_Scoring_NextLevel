@@ -23,12 +23,15 @@ from sqlalchemy.orm import Session
 
 from src.adapters.registry import (
     DEFAULT_MODELS,
+    GROUP_LOCAL,
     MODEL_CATALOG,
     catalog_by_id,
     catalog_entry_env_ok,
     catalog_grouped,
     default_catalog_ids,
     group_is_available,
+    local_catalog_entries,
+    local_discovery,
 )
 from src.auth.dependencies import require_login
 from src.benchmark.exporting import fetch_leaderboard_rows
@@ -119,16 +122,33 @@ def list_view(
 
 
 def _catalog_context() -> dict:
-    """Template kwargs that drive the model picker on runs/new.html."""
+    """Template kwargs that drive the model picker on runs/new.html.
 
-    defaults = default_catalog_ids()
+    Cloud models come from the curated catalog. Locally installed Ollama
+    models are looked up now (cached for a few seconds) and get their own
+    "Local" section; when Ollama is not reachable the section is left out and
+    ``local_models_status`` carries the message the picker shows instead.
+    """
+
+    discovery = local_discovery()
+    local_entries = local_catalog_entries(discovery)
+
+    grouped = catalog_grouped()
+    available = {group: group_is_available(group) for group, _entries in grouped}
+    if local_entries:
+        grouped = grouped + [(GROUP_LOCAL, local_entries)]
+        available[GROUP_LOCAL] = True
+
     return {
-        "model_catalog": MODEL_CATALOG,
-        "model_catalog_grouped": catalog_grouped(),
-        "model_catalog_defaults": defaults,
-        "model_catalog_group_available": {
-            group: group_is_available(group)
-            for group, _entries in catalog_grouped()
+        "model_catalog": MODEL_CATALOG + local_entries,
+        "model_catalog_grouped": grouped,
+        "model_catalog_defaults": default_catalog_ids(),
+        "model_catalog_group_available": available,
+        "local_models_status": {
+            "reachable": discovery.reachable,
+            "base_url": discovery.base_url,
+            "count": len(local_entries),
+            "error": discovery.error,
         },
     }
 
@@ -143,7 +163,8 @@ def _validate_selected_models(
     Rules
     -----
     - Empty selection → silently fall back to :func:`default_catalog_ids`.
-    - Unknown id → flash error, no fallback.
+    - Unknown id → flash error, no fallback. A local ``ollama:`` id gets a
+      more specific message when Ollama is not reachable.
     - Known id whose required env var is missing → flash error.
     - Duplicates → de-duplicated while preserving submission order.
     """
@@ -157,8 +178,17 @@ def _validate_selected_models(
     if not cleaned:
         return default_catalog_ids(), None
 
+    discovery = local_discovery()
     by_id = catalog_by_id()
+    by_id.update({e.id: e for e in local_catalog_entries(discovery)})
     unknown = [m for m in cleaned if m not in by_id]
+    unknown_local = [m for m in unknown if m.startswith("ollama:")]
+    if unknown_local and not discovery.reachable:
+        return [], (
+            f"Local model{'s' if len(unknown_local) > 1 else ''} "
+            f"{', '.join(repr(m) for m in unknown_local)} can't be used: "
+            f"{discovery.error} Start Ollama or choose a cloud model."
+        )
     if unknown:
         return [], (
             "Unknown model id"
