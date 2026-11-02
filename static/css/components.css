@@ -88,7 +88,7 @@
 /* model picker: native <select multiple> with optgroups (accessible, no JS needed) */
 .select.model-picker { height: var(--h-picker); padding: var(--s-1); line-height: var(--lh-base); }
 .select.model-picker optgroup { padding: var(--s-2) var(--s-1) var(--s-1); color: var(--c-text-muted); font-size: var(--t-xs); font-weight: var(--w-semibold); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
-.select.model-picker option { padding: var(--s-1) var(--s-2); border-radius: var(--r-1); color: var(--c-text); font-size: var(--t-md); }
+.select.model-picker option { padding: var(--s-1) var(--s-2); border-radius: var(--r-1); color: var(--c-text); font-size: var(--t-md); font-weight: var(--w-regular); letter-spacing: normal; text-transform: none; }
 .select.model-picker option:checked { background: var(--c-accent-soft); color: var(--c-accent-text); font-weight: var(--w-medium); }
 .select.model-picker option:disabled { color: var(--c-text-faint); }
 
@@ -224,7 +224,8 @@ a.card-link:hover { text-decoration: none; border-color: var(--c-border-strong);
 .table tbody tr:hover td { background: var(--c-surface-2); }
 .table.compact td { padding-top: var(--s-1); padding-bottom: var(--s-1); }
 .table tr.sel td { background: var(--c-surface-3); }
-.table th.num, .table td.num { text-align: right; white-space: nowrap; font-size: var(--t-md); }
+.table th.num, .table td.num { text-align: right; white-space: nowrap; }
+.table td.num { font-size: var(--t-md); }
 .table th.num { font-family: var(--font-sans); }
 .table td.actions, .table th.actions { display: table-cell; text-align: right; white-space: nowrap; }
 .table td.actions > * { margin-left: var(--s-1); }
@@ -247,7 +248,7 @@ a.card-link:hover { text-decoration: none; border-color: var(--c-border-strong);
 
 /* per-model progress on the run page */
 .model-progress { display: flex; flex-direction: column; }
-.model-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(var(--w-progress), 1fr) var(--s-10) auto; align-items: center; gap: var(--s-3); padding: var(--s-2) 0; border-top: var(--bw) solid var(--c-border); }
+.model-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(var(--w-progress), 1fr) var(--s-10) var(--w-status); align-items: center; gap: var(--s-3); padding: var(--s-2) 0; border-top: var(--bw) solid var(--c-border); }
 .model-row:first-child { border-top: 0; padding-top: 0; }
 .model-row .progress { margin-top: 0; }
 .model-row.has-error { align-items: start; }
