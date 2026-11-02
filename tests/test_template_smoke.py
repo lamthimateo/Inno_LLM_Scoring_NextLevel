@@ -41,7 +41,7 @@ def test_get_login_renders_200_anonymous(client: TestClient) -> None:
     assert resp.status_code == 200, resp.text[:500]
     # Design-system markers — confirms base.html + auth/login.html rendered.
     assert "Sign in" in resp.text
-    assert "/static/css/app.css" in resp.text
+    assert "/static/css/tokens.css" in resp.text
 
 
 def test_get_login_with_next_query_param_renders_200(client: TestClient) -> None:

@@ -3,7 +3,7 @@
    No build step. Loaded after htmx.min.js.
 
    Responsibilities:
-     - Theme toggle (persisted in localStorage, follows system by default)
+     - Theme toggle (persisted in localStorage; first visit follows the system, else dark)
      - Flash auto-dismiss
      - Toast helper (window.toast)
      - Modal open/close (data-modal-target / data-modal-close)
@@ -19,28 +19,34 @@
   "use strict";
 
   /* ---------- Theme ----------------------------------------------------- */
+  // Saved choice wins, then the system preference, then dark (the default).
+  // base.html applies the same rule before first paint.
   const THEME_KEY = "inno_theme";
   function applyTheme(t) { document.documentElement.setAttribute("data-theme", t); }
   function initTheme() {
-    const saved = localStorage.getItem(THEME_KEY);
-    // Default matches the boot script in base.html (light, the Claude /
-    // Anthropic warm-ivory aesthetic). Dark is opt-in via the toggle.
-    const initial = saved || "light";
+    let initial = "dark";
+    try {
+      initial = localStorage.getItem(THEME_KEY) ||
+        (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+    } catch (e) { /* storage blocked: keep the default */ }
     applyTheme(initial);
     document.addEventListener("click", function (e) {
       const btn = e.target.closest("[data-theme-toggle]");
       if (!btn) return;
-      const cur = document.documentElement.getAttribute("data-theme") || "light";
+      const cur = document.documentElement.getAttribute("data-theme") || "dark";
       const next = cur === "dark" ? "light" : "dark";
       applyTheme(next);
-      localStorage.setItem(THEME_KEY, next);
+      try { localStorage.setItem(THEME_KEY, next); } catch (err) { /* storage blocked */ }
       updateThemeLabels(next);
     });
     updateThemeLabels(initial);
   }
   function updateThemeLabels(t) {
-    document.querySelectorAll("[data-theme-label]").forEach(function (el) {
-      el.textContent = t === "dark" ? "Dark" : "Light";
+    // The toggle shows a sun or moon icon; its accessible name says what a click does.
+    const label = t === "dark" ? "Switch to light theme" : "Switch to dark theme";
+    document.querySelectorAll("[data-theme-toggle]").forEach(function (el) {
+      el.setAttribute("aria-label", label);
+      el.setAttribute("title", label);
     });
   }
 

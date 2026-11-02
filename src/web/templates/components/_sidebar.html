@@ -1,0 +1,38 @@
+{#
+  App sidebar (logged-in pages).
+  Expects: current_user, active_tab in {home, questions, runs, results, admin}.
+  Admin is shown to admins only. Below 860px the sidebar becomes a strip
+  (pure CSS, see base.css).
+#}
+<aside class="sidebar" aria-label="Sidebar">
+  <a class="brand" href="{{ url_for('home') }}" aria-label="LLM Arena, dashboard">LLM <span>Arena</span></a>
+
+  <nav class="nav" aria-label="Primary">
+    <div class="nav-label">Workspace</div>
+    <a class="nav-item {{ 'is-active' if active_tab == 'home' else '' }}" href="{{ url_for('home') }}"
+       {% if active_tab == 'home' %}aria-current="page"{% endif %}>Dashboard</a>
+    <a class="nav-item {{ 'is-active' if active_tab == 'questions' else '' }}" href="{{ url_for('questions.list') }}"
+       {% if active_tab == 'questions' %}aria-current="page"{% endif %}>Question sets</a>
+    <a class="nav-item {{ 'is-active' if active_tab == 'runs' else '' }}" href="{{ url_for('runs.list') }}"
+       {% if active_tab == 'runs' %}aria-current="page"{% endif %}>Runs</a>
+    <a class="nav-item {{ 'is-active' if active_tab == 'results' else '' }}" href="{{ url_for('results.list') }}"
+       {% if active_tab == 'results' %}aria-current="page"{% endif %}>Leaderboard</a>
+    {% if current_user.role == 'admin' %}
+      <a class="nav-item {{ 'is-active' if active_tab == 'admin' else '' }}" href="{{ url_for('admin.index') }}"
+         {% if active_tab == 'admin' %}aria-current="page"{% endif %}>Admin</a>
+    {% endif %}
+  </nav>
+
+  <div class="sidebar-foot">
+    <div class="sidebar-user">
+      <span>{{ current_user.username }}</span>
+      {% if current_user.role %}<span class="badge badge-role-{{ current_user.role }}">{{ current_user.role }}</span>{% endif %}
+    </div>
+    <div class="sidebar-links">
+      <a href="{{ url_for('account') }}">Account</a>
+      <form method="post" action="{{ url_for('logout') }}">
+        <button type="submit">Log out</button>
+      </form>
+    </div>
+  </div>
+</aside>
