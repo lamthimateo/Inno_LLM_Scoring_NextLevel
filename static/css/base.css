@@ -161,6 +161,10 @@ code, kbd, samp, pre, .mono, .text-mono { font-family: var(--font-mono); font-si
 .spread { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
 .divider { height: var(--bw); margin: var(--s-2) 0; background: var(--c-border); }
 .flex-1 { flex: 1; min-width: 0; }
+.justify-between { justify-content: space-between; }
+.justify-end { justify-content: flex-end; }
+.justify-center { justify-content: center; }
+.nowrap { flex-wrap: nowrap; }
 .maxw-form { max-width: var(--w-form); }
 .inline-form { display: inline; margin: 0; }
 

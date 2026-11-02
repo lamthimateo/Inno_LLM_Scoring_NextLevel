@@ -305,6 +305,9 @@ a.card-link:hover { text-decoration: none; border-color: var(--c-border-strong);
 .empty .btn { margin-top: var(--s-2); }
 .empty-code { font-family: var(--font-mono); font-size: var(--t-xl); color: var(--c-text-muted); }
 
+.empty.empty-compact { padding: var(--s-6) var(--s-3); }
+.pagination { display: flex; align-items: center; justify-content: center; gap: var(--s-3); padding: var(--s-4) 0; }
+
 .htmx-indicator { opacity: 0; transition: opacity var(--dur-2) var(--ease); }
 .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }
 
