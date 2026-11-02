@@ -39,7 +39,7 @@
           <a class="brand" href="{{ url_for('login') }}" aria-label="LLM Arena">LLM <span>Arena</span></a>
         {% endif %}
         <nav class="crumbs" aria-label="Breadcrumb">
-          {% block crumbs %}
+          {% block crumbs scoped %}
             {% if active_tab in section_labels %}
               <span>Workspace</span><span aria-hidden="true">/</span><b>{{ section_labels[active_tab] }}</b>
             {% endif %}
